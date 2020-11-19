@@ -76,7 +76,8 @@ class DefaultProcessor(Processor):
             if 'metadata' in data and 'annotations' in data['metadata']:
                 anno = data['metadata']['annotations']
                 if anno and helm_hook_anno in anno:
-                    if self.hook_filter_list is None or anno[helm_hook_anno] in self.hook_filter_list:
+                    helm_hooks = anno[helm_hook_anno].split(',')
+                    if self.hook_filter_list is None or set(self.hook_filter_list).issubset(set(helm_hooks)):
                         is_hook = True
             if is_hook != (self.hook_filter == BoolFilter.IF_TRUE):
                 return False

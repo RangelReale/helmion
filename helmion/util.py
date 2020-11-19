@@ -60,7 +60,7 @@ def is_namedspaced(apiVersion: str, kind: str):
     """Checks whether the Kubernetes object is namespaced"""
     pversion = parse_apiversion(apiVersion)
     for nn in kubernetes_non_namespaced_objects:
-        if pversion == nn[0] and nn[1] == kind:
+        if pversion[0] == nn[0] and nn[1] == kind:
             return False
     return True
 

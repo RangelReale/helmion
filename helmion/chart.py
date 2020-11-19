@@ -254,9 +254,11 @@ class Chart:
     data: List[ChartData]
     """List of objected generated from the Helm chart"""
 
-    def __init__(self, request: Request):
+    def __init__(self, request: Request, data: Optional[Sequence[ChartData]] = None):
         self.request = request
         self.data = []
+        if data is not None:
+            self.data.extend(data)
 
     def clone(self) -> 'Chart':
         """
