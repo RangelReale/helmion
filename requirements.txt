@@ -1,0 +1,5 @@
+PyYAML>=5.3.1
+requests>=2.25.0
+jsonpatchext>=1.37
+semver>=2.13.0
+python-dateutil>=2.8.1
