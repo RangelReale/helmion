@@ -2,7 +2,7 @@ import copy
 import os
 import subprocess
 import tempfile
-from typing import Optional, Mapping, Any, List, Sequence, Union, Callable
+from typing import Optional, Mapping, Any, List, Sequence, Union, Callable, Dict
 
 import yaml
 
@@ -217,6 +217,9 @@ class Splitter:
 
     This splits chart objects in different categories using functions and filters.
 
+    It is possible for a chart object to appear in more than one category, depending on the
+    splitter configuration.
+
     :param categories: a ```Mapping``` of category names and optional processor.
     :param categoryfunc: a function to choose categories for the chart objects. See
         :data:`SplitterCategoryFuncResult` for details.
@@ -242,19 +245,39 @@ class Splitter:
 
 
 class Chart:
+    """
+    Chart represents a set of object Kubernetes generated from a Helm chart.
+
+    :param request: Chart request
+    """
     request: Request
     data: List[ChartData]
+    """List of objected generated from the Helm chart"""
 
     def __init__(self, request: Request):
         self.request = request
         self.data = []
 
-    def clone(self):
+    def clone(self) -> 'Chart':
+        """
+        Clones the current chart.
+
+        :return: a clone of the current :class:`Chart` class
+        """
         ret = Chart(self.request)
         ret.data = copy.deepcopy(self.data)
         return ret
 
     def process(self, processor: Optional[Processor]) -> 'Chart':
+        """
+        Process the current chart using the processor and return a new :class:`Chart` instance if
+        a processor was passed, otherwise returns the same instance.
+
+        The source :class:`Chart` remains unchanged in case of processing.
+
+        :param processor: the :class:`Processor` to apply. If None, returns the same instance unchanged.
+        :return: a processed :class:`Chart` instance, or the same instance if *processor* is None.
+        """
         if processor is None:
             return self
 
@@ -288,7 +311,16 @@ class Chart:
         return ret
 
     def split(self, splitter: Splitter) -> Mapping[str, 'Chart']:
-        ret = {}
+        """
+        Splits the chart objects in a list of categories.
+
+        Returns new :class:`Chart` instances, the source :class:`Chart` remains unchanged.
+
+        :param splitter: the splitter to use to categorize the objects.
+        :return: a ```Mapping``` of categories and their charts
+        """
+        ret: Dict[str, 'Chart'] = {}
+
         for cname in splitter.categories.keys():
             ret[cname] = Chart(self.request)
 

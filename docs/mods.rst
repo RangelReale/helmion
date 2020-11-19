@@ -12,4 +12,5 @@ Modules
    mod-data
    mod-exception
    mod-info
+   mod-processor
    mod-util

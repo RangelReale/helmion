@@ -9,16 +9,44 @@ from .util import helm_hook_anno, is_namedspaced, parse_apiversion
 
 
 class PatchType(TypedDict, total=False):
+    """
+    A helper for applying :mod:`jsonpatchext`.
+    """
     condition: Any
+    """A single :mod:`jsonpatchext` condition to apply this patch"""
+
     conditions: Sequence[Any]
+    """Multiple :mod:`jsonpatchext` conditions to apply this patch. Only one of the condition must match. (OR match)."""
+
     patch: Any
+    """A single :mod:`jsonpatchext` to apply."""
+
     patches: Sequence[Any]
+    """Multiple :mod:`jsonpatchext` to apply, in order."""
 
 
-FilterFunc = Callable[[Any], bool]
+FilterFunc = Callable[[ChartData], bool]
+"""
+A filter function that takes a chart object data and returns whether to include (True) or not (False).
+"""
 
 
 class DefaultProcessor(Processor):
+    """
+    A default processor for common filters.
+
+    :param add_namespace: if True, sets the namespace from :class:`Request` to all namespaced Kubernetes objects
+        if not already set.
+    :param namespaced_filter: If ```BoolFilter.IF_TRUE``` includes only objects containing a "metadata.namespace"
+        property. If ```BoolFilter.IF_FALSE```, includes only objects NOT containing a "metadata.namespace"
+        property. If ```BoolFilter.ALL```, don't filter namespaces.
+    :param hook_filter: If ```BoolFilter.IF_TRUE``` includes only objects containing a Helm hook. If
+        ```BoolFilter.IF_FALSE```, includes only objects NOT containing a Helm hook. If ```BoolFilter.ALL```,
+        don't filter by present of Helm hooks.
+    :param hook_filter_list: a list of hooks to filter if filtering hooks. If None, includes all hooks.
+    :param jsonpatches: :mod:`jsonpatchext` patches to apply. See :data:`PatchType`.
+    :param filterfunc: a callable to call on each object to check for inclusion.
+    """
     add_namespace: bool
     namespaced_filter: BoolFilter
     hook_filter: BoolFilter
@@ -98,11 +126,30 @@ class DefaultProcessor(Processor):
 
 
 class FilterCRDs(Processor):
+    """
+    Filter charts that are CRDs (```apiVersion: apiextensions.k8s.io/CustomResourceDefinition```).
+
+    :param invert_filter: if True, filters charts the are NOT CRDs.
+    """
+    invert_filter: bool
+
+    def __init__(self, invert_filter: bool = False):
+        super().__init__()
+        self.invert_filter = invert_filter
+
     def filter(self, request: Request, data: ChartData) -> bool:
-        return parse_apiversion(data['apiVersion'])[0] == 'apiextensions.k8s.io' and data['kind'] == 'CustomResourceDefinition'
+        value = parse_apiversion(data['apiVersion'])[0] == 'apiextensions.k8s.io' and data['kind'] == 'CustomResourceDefinition'
+        return value != self.invert_filter
 
 
 class FilterRemoveHelmData(Processor):
+    """
+    Removes data added by Helm.
+
+    :param only_exlcusive: if True, only remove items using the ```helm.sh``` parameter namespace, otherwise remove
+        all items that are detected to be added by Helm.
+    :param remove_hooks: whether to also remove hooks, as they are also on the ```helm.sh``` parameter namespace.
+    """
     only_exlcusive: bool
     remove_hooks: bool
 
@@ -112,18 +159,31 @@ class FilterRemoveHelmData(Processor):
         self.remove_hooks = remove_hooks
 
     def mutate(self, request: Request, data: ChartData) -> None:
+        """
+        Removes Helm data.
+
+        If label *app.kubernetes.io/managed-by == Helm*, it is also removed.
+
+        :param request:
+        :param data:
+        :return:
+        """
         labels_general = ['app.kubernetes.io/managed-by']
         annotations_general = []
 
         root_data = []
+        # Locate all sources of metadata
         if 'metadata' in data:
             root_data.append(data['metadata'])
-        if parse_apiversion(data['apiVersion'])[0] == 'apps' and data['kind'] == 'Deployment':
+        if parse_apiversion(data['apiVersion'])[0] == 'apps' and data['kind'] in ['Deployment',
+            'StatefulSet', 'DaemonSet', 'ReplicaSet']:
+            # Check metadata of objects that have a spec.template
             if 'spec' in data and 'template' in data['spec'] and 'metadata' in data['spec']['template']:
                 root_data.append(data['spec']['template']['metadata'])
 
         for root in root_data:
             if 'labels' in root:
+                # Remove labels
                 if root['labels'] is not None:
                     for lname in list(root['labels'].keys()):
                         if lname.startswith('helm.sh/'):
@@ -135,6 +195,7 @@ class FilterRemoveHelmData(Processor):
                     del root['labels']
 
             if 'annotations' in root:
+                # Remove annotations
                 if root['annotations'] is not None:
                     for lname in list(root['annotations'].keys()):
                         if lname.startswith('helm.sh/'):
