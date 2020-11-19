@@ -22,7 +22,11 @@ from helmion.config import BoolFilter
 from helmion.processor import DefaultProcessor, FilterRemoveHelmData, FilterCRDs
 
 req = Request(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
-              releasename='helmion-traefik', namespace='router')
+              releasename='helmion-traefik', namespace='router', values={
+        'service': {
+            'type': 'ClusterIP',
+        }
+    })
 
 reqfilter = DefaultProcessor(add_namespace=True, namespaced_filter=BoolFilter.ALL, hook_filter=BoolFilter.ALL, jsonpatches=[
     {
@@ -82,9 +86,9 @@ print('Split Service and ServiceAccount charts')
 print('=======================================')
 
 reqsplitter = Splitter(categories={
-    'service': None,
+    'deployment': None,
     'serviceaccount': None,
-}, categoryfunc=lambda x: 'service' if x['kind'] == 'Service' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
+}, categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
 
 mres = res.split(reqsplitter)
 
@@ -118,9 +122,6 @@ Output:
                     'singular': 'ingressroutetcp'},
           'scope': 'Namespaced',
           'version': 'v1alpha1'}}
-{'apiVersion': 'apiextensions.k8s.io/v1beta1',
- 'kind': 'CustomResourceDefinition',
- 'metadata': {'name': 'ingressrouteudps.traefik.containo.us',
 
 <...more...>
 
@@ -169,20 +170,91 @@ Split charts by CRDs
             'resources': ['services', 'endpoints', 'secrets'],
             'verbs': ['get', 'list', 'watch']},
            {'apiGroups': ['extensions', 'networking.k8s.io'],
+            'resources': ['ingresses', 'ingressclasses'],
+            'verbs': ['get', 'list', 'watch']},
+           {'apiGroups': ['extensions', 'networking.k8s.io'],
+            'resources': ['ingresses/status'],
+            'verbs': ['update']},
+           {'apiGroups': ['traefik.containo.us'],
+            'resources': ['ingressroutes',
+                          'ingressroutetcps',
+                          'ingressrouteudps',
+                          'middlewares',
+                          'tlsoptions',
+                          'tlsstores',
+                          'traefikservices'],
+            'verbs': ['get', 'list', 'watch']}]}
 
 <...more...>
 
 Split Service and ServiceAccount charts
 =======================================
 
-*** service ***
-{'apiVersion': 'v1',
- 'kind': 'ServiceAccount',
- 'metadata': {'annotations': {'helmion.github.io/processed-by': 'helmion'},
-              'labels': {'app.kubernetes.io/instance': 'helmion-traefik',
+*** deployment ***
+{'apiVersion': 'apps/v1',
+ 'kind': 'Deployment',
+ 'metadata': {'labels': {'app.kubernetes.io/instance': 'helmion-traefik',
                          'app.kubernetes.io/name': 'traefik'},
               'name': 'helmion-traefik',
-              'namespace': 'router'}}
+              'namespace': 'router'},
+ 'spec': {'replicas': 1,
+          'selector': {'matchLabels': {'app.kubernetes.io/instance': 'helmion-traefik',
+                                       'app.kubernetes.io/name': 'traefik'}},
+          'strategy': {'rollingUpdate': {'maxSurge': 1, 'maxUnavailable': 1},
+                       'type': 'RollingUpdate'},
+          'template': {'metadata': {'labels': {'app.kubernetes.io/instance': 'helmion-traefik',
+                                               'app.kubernetes.io/name': 'traefik'}},
+                       'spec': {'containers': [{'args': ['--global.checknewversion',
+                                                         '--global.sendanonymoususage',
+                                                         '--entryPoints.traefik.address=:9000/tcp',
+                                                         '--entryPoints.web.address=:8000/tcp',
+                                                         '--entryPoints.websecure.address=:8443/tcp',
+                                                         '--api.dashboard=true',
+                                                         '--ping=true',
+                                                         '--providers.kubernetescrd',
+                                                         '--providers.kubernetesingress'],
+                                                'image': 'traefik:2.3.1',
+                                                'imagePullPolicy': 'IfNotPresent',
+                                                'livenessProbe': {'failureThreshold': 3,
+                                                                  'httpGet': {'path': '/ping',
+                                                                              'port': 9000},
+                                                                  'initialDelaySeconds': 10,
+                                                                  'periodSeconds': 10,
+                                                                  'successThreshold': 1,
+                                                                  'timeoutSeconds': 2},
+                                                'name': 'helmion-traefik',
+                                                'ports': [{'containerPort': 9000,
+                                                           'name': 'traefik',
+                                                           'protocol': 'TCP'},
+                                                          {'containerPort': 8000,
+                                                           'name': 'web',
+                                                           'protocol': 'TCP'},
+                                                          {'containerPort': 8443,
+                                                           'name': 'websecure',
+                                                           'protocol': 'TCP'}],
+                                                'readinessProbe': {'failureThreshold': 1,
+                                                                   'httpGet': {'path': '/ping',
+                                                                               'port': 9000},
+                                                                   'initialDelaySeconds': 10,
+                                                                   'periodSeconds': 10,
+                                                                   'successThreshold': 1,
+                                                                   'timeoutSeconds': 2},
+                                                'resources': None,
+                                                'securityContext': {'capabilities': {'drop': ['ALL']},
+                                                                    'readOnlyRootFilesystem': True,
+                                                                    'runAsGroup': 65532,
+                                                                    'runAsNonRoot': True,
+                                                                    'runAsUser': 65532},
+                                                'volumeMounts': [{'mountPath': '/data',
+                                                                  'name': 'data'},
+                                                                 {'mountPath': '/tmp',
+                                                                  'name': 'tmp'}]}],
+                                'hostNetwork': False,
+                                'securityContext': {'fsGroup': 65532},
+                                'serviceAccountName': 'helmion-traefik',
+                                'terminationGracePeriodSeconds': 60,
+                                'volumes': [{'emptyDir': {}, 'name': 'data'},
+                                            {'emptyDir': {}, 'name': 'tmp'}]}}}}
 
 *** serviceaccount ***
 {'apiVersion': 'v1',

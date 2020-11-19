@@ -7,7 +7,11 @@ from helmion.config import BoolFilter
 from helmion.processor import DefaultProcessor, FilterRemoveHelmData, FilterCRDs
 
 req = Request(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
-              releasename='helmion-traefik', namespace='router')
+              releasename='helmion-traefik', namespace='router', values={
+        'service': {
+            'type': 'ClusterIP',
+        }
+    })
 
 reqfilter = DefaultProcessor(add_namespace=True, namespaced_filter=BoolFilter.ALL, hook_filter=BoolFilter.ALL, jsonpatches=[
     {
@@ -67,9 +71,9 @@ print('Split Service and ServiceAccount charts')
 print('=======================================')
 
 reqsplitter = Splitter(categories={
-    'service': None,
+    'deployment': None,
     'serviceaccount': None,
-}, categoryfunc=lambda x: 'service' if x['kind'] == 'Service' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
+}, categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
 
 mres = res.split(reqsplitter)
 

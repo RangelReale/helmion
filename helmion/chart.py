@@ -8,7 +8,7 @@ import yaml
 
 from .config import Config
 from .data import ChartData
-from .exception import HelmError, InputOutputError
+from .exception import HelmError, InputOutputError, ConfigurationError
 from .info import RepositoryInfo
 from .util import is_list_resource
 
@@ -166,7 +166,7 @@ class Request:
                     cmd += " --set {}='{}'".format(k, v)
 
             if self.values is not None:
-                values_file = os.path.join(tmpdir.name, 'values.yaml')
+                values_file = os.path.join(tmpdir, 'values.yaml')
                 with open(values_file, 'w') as vfn_dst:
                     vfn_dst.write(yaml.dump(self.values, Dumper=yaml.Dumper, sort_keys=False))
                 cmd += ' --values {}'.format(values_file)
@@ -318,6 +318,7 @@ class Chart:
 
         :param splitter: the splitter to use to categorize the objects.
         :return: a ```Mapping``` of categories and their charts
+        :raises ConfigurationError: on a category that not exists
         """
         ret: Dict[str, 'Chart'] = {}
 
@@ -326,9 +327,18 @@ class Chart:
 
         for d in self.data:
             category = splitter.category(d)
-            for cname in splitter.categories.keys():
-                if category is True or (isinstance(category, str) and category == cname) or \
-                        (isinstance(category, Sequence) and cname in category):
+            categorylist = None
+            if category is True:
+                categorylist = list(splitter.categories.keys())
+            elif isinstance(category, str):
+                categorylist = [category]
+            elif isinstance(category, Sequence):
+                categorylist = category
+
+            if categorylist is not None:
+                for cname in categorylist:
+                    if cname not in splitter.categories.keys():
+                        raise ConfigurationError('Unknown category: {}'.format(cname))
                     ret[cname].data.append(copy.deepcopy(d))
 
         for cname, cprocessor in splitter.categories.items():
