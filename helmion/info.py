@@ -261,7 +261,7 @@ class RepositoryInfo:
             return self.entries[name]
         return None
 
-    def chartVersion(self, name: str, version: Optional[str]) -> Optional[ChartVersionInfo]:
+    def chartVersion(self, name: str, version: Optional[str] = None) -> Optional[ChartVersionInfo]:
         """
         Returns a chart version info.
 

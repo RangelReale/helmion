@@ -27,6 +27,7 @@ setuptools.setup(
     package_data={'helmion': ['py.typed']},
     zip_safe=False,
     install_requires=INSTALL_REQUIRES,
+    test_suite="helmion.tests",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
