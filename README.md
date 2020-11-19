@@ -79,11 +79,11 @@ for category, category_chart in mres.items():
         pprint.pprint(d)
 
 
-# Split Service charts
+# Split and filter by Kind
 
 print('')
-print('Split Service and ServiceAccount charts')
-print('=======================================')
+print('Split Deployment and ServiceAccount charts')
+print('==========================================')
 
 reqsplitter = Splitter(categories={
     'deployment': None,
@@ -187,8 +187,8 @@ Split charts by CRDs
 
 <...more...>
 
-Split Service and ServiceAccount charts
-=======================================
+Split Deployment and ServiceAccount charts
+==========================================
 
 *** deployment ***
 {'apiVersion': 'apps/v1',
