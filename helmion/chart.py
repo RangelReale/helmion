@@ -183,6 +183,8 @@ class Request:
         with tempfile.TemporaryDirectory() as tmpdir:
             cmd = '{} template {} {} --repo {} --include-crds'.format(
                 self.config.helm_bin, self.releasename, self.chart, self.repository)
+            if self.config.helm_debug:
+                cmd += ' --debug'
             if self.namespace is not None:
                 cmd += ' --namespace {}'.format(self.namespace)
             if self.version is not None:
@@ -208,7 +210,7 @@ class Request:
             except subprocess.CalledProcessError as e:
                 raise HelmError("Error executing helm: {}".format(e.stderr.decode('utf-8')), cmd=cmd) from e
             out = runcmd.stdout.decode('UTF-8','ignore')
-            data = self.config.yaml_load_all(out)
+            data: ChartData = self.config.yaml_load_all(out)
 
             ret = Chart(self)
             for d in data:
