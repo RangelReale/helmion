@@ -14,16 +14,24 @@ for ci in repoinfo.entries.values():
     for r in ci.versions:
         print('\trelease: {}'.format(r.version))
 
-print('')
 
-print('Chart values file')
-print('===================')
+print('')
+print('Chart.yaml')
+print('==========')
+
+# pprint.pprint(repoinfo.chartVersion('traefik', '9.10.1').getChartFile())
+print(repoinfo.chartVersion('traefik', '9.10.1').readArchiveFiles().archiveFiles['Chart.yaml'])
+
+
+print('')
+print('values.yaml')
+print('===========')
 
 # pprint.pprint(repoinfo.chartVersion('traefik', '9.10.1').getValuesFile())
 print(repoinfo.chartVersion('traefik', '9.10.1').readArchiveFiles().archiveFiles['values.yaml'])
 
-print('')
 
+print('')
 print('Chart file contents')
 print('===================')
 with repoinfo.chartVersion('traefik', '9.10.1').fileOpen() as tar_file:
