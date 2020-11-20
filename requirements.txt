@@ -3,3 +3,4 @@ requests>=2.25.0
 jsonpatchext>=1.37
 python-dateutil>=2.8.1
 semantic_version>=2.8.5
+deepmerge>=0.1

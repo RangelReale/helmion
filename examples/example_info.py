@@ -46,6 +46,8 @@ pprint.pprint(repochart.getDependencies())
 
 # for depname, dep in repochart.getDependenciesCharts().items():
 #     print(dep.getArchiveFile('Chart.yaml'))
+#
+# pprint.pprint(repochart.getValuesFileWithDependencies())
 
 
 print('')

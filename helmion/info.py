@@ -1,10 +1,12 @@
+import copy
 import pathlib
 import posixpath
 import tarfile
 from datetime import datetime
 from io import BytesIO
-from typing import Mapping, Any, Sequence, List, Dict, Optional
+from typing import Mapping, Any, Sequence, List, Dict, Optional, cast
 
+import deepmerge
 import requests
 import semantic_version  # type: ignore
 from dateutil.parser import isoparse
@@ -39,6 +41,8 @@ class ChartVersionInfo:
 
     _files: Dict[Any, Any]
     _archiveFiles: Optional[Dict[Any, Any]]
+    _dependencyList: Optional[List[Mapping[Any, Any]]]
+    _dependencyCharts: Dict[Any, 'ChartVersionInfo']
 
     def __init__(self, chart: 'ChartInfo', rawinfo: Mapping[Any, Any]):
         self.rawinfo = rawinfo
@@ -64,6 +68,8 @@ class ChartVersionInfo:
                 raise ConfigurationError(str(e)) from e
         self._archiveFiles = None
         self._files = {}
+        self._dependencyList = None
+        self._dependencyCharts = {}
 
     def fileUrl(self) -> str:
         """
@@ -112,6 +118,17 @@ class ChartVersionInfo:
         """
         return self._getFile('values.yaml')
 
+    def getValuesFileWithDependencies(self) -> Mapping[str, Any]:
+        """
+        Returns the parsed ```values.yaml``` file as a class:`Mapping`, merged with the dependency ones.
+
+        :return: parsed and merged file
+        """
+        base: Dict[str, Any] = {}
+        for depname, dep in self.getDependenciesCharts().items():
+            base[depname] = dep.getValuesFile()
+        return deepmerge.always_merger.merge(base, self.getValuesFile())
+
     def getDependenciesList(self) -> List[Mapping[Any, Any]]:
         """
         Returns the chart dependencies as a list.
@@ -119,18 +136,24 @@ class ChartVersionInfo:
         :return: dependencies
         :raises ConfigurationError: on configuration error
         """
+        if self._dependencyList is not None:
+            return self._dependencyList
+
         chartfile = self.getChartFile()
         if chartfile['apiVersion'] == 'v2':
             if 'dependencies' in chartfile:
-                return chartfile['dependencies']
-            return []
+                self._dependencyList = chartfile['dependencies']
+            else:
+                self._dependencyList = []
         elif chartfile['apiVersion'] == 'v1':
             self.readArchiveFiles()
             if self._archiveFiles is not None and 'requirements.yaml' in self._archiveFiles:
-                return self._getFile('requirements.yaml')['dependencies']
-            return []
+                self._dependencyList = self._getFile('requirements.yaml')['dependencies']
+            else:
+                self._dependencyList = []
         else:
             raise ConfigurationError('Unknown chart file version: {}'.format(chartfile))
+        return self._dependencyList
 
     def getDependencies(self) -> Mapping[Any, Any]:
         """
@@ -152,12 +175,16 @@ class ChartVersionInfo:
         :return: :class:`ChartVersionInfo` downloaded from the dependency
         :raises ParamError: on dependency not found
         """
+        if name in self._dependencyCharts:
+            return self._dependencyCharts[name]
+
         deps = self.getDependencies()
         if name not in deps:
             raise ParamError('Unknown dependency: {}'.format(name))
         dep = deps[name]
         drepo = resolve_dependency_url(self.chart.repository.url, dep['repository'])
-        return RepositoryInfo(drepo).mustChartVersion(dep['name'], dep['version'])
+        self._dependencyCharts[name] = RepositoryInfo(drepo).mustChartVersion(dep['name'], dep['version'])
+        return self._dependencyCharts[name]
 
     def getDependenciesCharts(self) -> Mapping[str, 'ChartVersionInfo']:
         """
