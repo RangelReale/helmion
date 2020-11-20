@@ -1,8 +1,14 @@
+import pprint
+
 from helmion.info import RepositoryInfo
 
-repository_url = 'https://helm.traefik.io/traefik'
-chart_name = 'traefik'
-chart_version = '9.10.1'
+# repository_url = 'https://helm.traefik.io/traefik'
+# chart_name = 'traefik'
+# chart_version = '9.10.1'
+
+repository_url = 'https://grafana.github.io/loki/charts'
+chart_name = 'loki-stack'
+chart_version = None
 
 repoinfo = RepositoryInfo(repository_url)
 
@@ -21,7 +27,7 @@ print('')
 print('Chart.yaml')
 print('==========')
 
-# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getChartFile())
+# pprint.pprint(repoinfo.mustChartVersion(chart_name, chart_version).getChartFile())
 print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('Chart.yaml'))
 
 
@@ -29,8 +35,15 @@ print('')
 print('values.yaml')
 print('===========')
 
-# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getValuesFile())
+# pprint.pprint(repoinfo.mustChartVersion(chart_name, chart_version).getValuesFile())
 print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('values.yaml'))
+
+
+print('')
+print('dependencies')
+print('============')
+
+pprint.pprint(repoinfo.mustChartVersion(chart_name, chart_version).getDependencies())
 
 
 print('')

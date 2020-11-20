@@ -109,6 +109,26 @@ class ChartVersionInfo:
         """
         return self._getFile('values.yaml')
 
+    def getDependencies(self) -> Mapping[str, Any]:
+        """
+        Returns the chart dependencies.
+
+        :return: dependencies
+        :raises ConfigurationError: on configuration error
+        """
+        chartfile = self.getChartFile()
+        if chartfile['apiVersion'] == 'v2':
+            if 'dependencies' in chartfile:
+                return chartfile['dependencies']
+            return {}
+        elif chartfile['apiVersion'] == 'v1':
+            self.readArchiveFiles()
+            if self._archiveFiles is not None and 'requirements.yaml' in self._archiveFiles:
+                return self._getFile('requirements.yaml')
+            return {}
+        else:
+            raise ConfigurationError('Unknown chart file version: {}'.format(chartfile))
+
     def _getFile(self, name: str) -> Mapping[Any, Any]:
         """
         Returns the requested file as a class:`Mapping`.
@@ -118,7 +138,7 @@ class ChartVersionInfo:
         :raises NetworkError: on network error
         :raises InputOutputError: on file IO or parsing error
         """
-        if name not in ['Chart.yaml', 'values.yaml']:
+        if name not in ['Chart.yaml', 'values.yaml', 'requirements.yaml']:
             raise InputOutputError('Unknown file: {}'.format(name))
         if name in self._files:
             return self._files[name]
@@ -126,6 +146,14 @@ class ChartVersionInfo:
         return self._files[name]
 
     def getArchiveFile(self, name: str) -> str:
+        """
+        Returns the raw file contents from the archive file. Only relevant files are loaded. See
+        :func:`readArchiveFiles` for details.
+
+        :param name: file name
+        :return: file contents
+        :raises ParamError: on unknown file
+        """
         self.readArchiveFiles()
         if self._archiveFiles is None or name not in self._archiveFiles:
             raise ParamError('Unknown archive file: {}'.format(name))
