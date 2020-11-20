@@ -290,7 +290,7 @@ class FilterRemoveHelmData(Processor):
                 if root['annotations'] is not None:
                     for lname in list(root['annotations'].keys()):
                         if lname.startswith('helm.sh/'):
-                            if self.remove_hooks or lname != 'helm.sh/hook':
+                            if self.remove_hooks or not lname.startswith('helm.sh/hook'):
                                 del root['annotations'][lname]
                         elif not self.only_exlcusive and lname in annotations_general:
                             del root['annotations'][lname]

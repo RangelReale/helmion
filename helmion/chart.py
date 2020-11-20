@@ -193,6 +193,10 @@ class Request:
 
             ret = Chart(self)
             for d in data:
+                if d is None:
+                    continue
+                if not isinstance(d, Mapping):
+                    raise HelmError('Unknown data type in Helm template output: "{}"', repr(d))
                 ret.data.append(d)
 
         return self.postprocess(ret.process(processor))
