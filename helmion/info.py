@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import Mapping, Any, Sequence, List, Dict, Optional
 
 import requests
-import semver  # type: ignore
+import semantic_version  # type: ignore
 from dateutil.parser import isoparse
 
 from .config import Config
@@ -25,7 +25,7 @@ class ChartVersionInfo:
     chart: 'ChartInfo'
     name: str
     version: str
-    version_info: semver.VersionInfo
+    version_info: semantic_version.Version
     description: str
     appVersion: Optional[str]
     digest: str
@@ -56,7 +56,7 @@ class ChartVersionInfo:
         else:
             self.created = isoparse(rawinfo['created'])
         try:
-            self.version_info = semver.VersionInfo.parse(remove_prefix(self.version, 'v'))
+            self.version_info = semantic_version.Version(remove_prefix(self.version, 'v'))
         except ValueError as e:
             raise ConfigurationError(str(e)) from e
         self._archiveFiles = None
@@ -128,6 +128,13 @@ class ChartVersionInfo:
             return {}
         else:
             raise ConfigurationError('Unknown chart file version: {}'.format(chartfile))
+
+    # def getDependenciesCharts(self) -> Mapping[str, 'ChartVersionInfo']:
+    #     deps = self.getDependencies()
+    #     ret: Dict[str, 'ChartVersionInfo'] = {}
+    #     for dep in deps:
+    #
+    #     return ret
 
     def _getFile(self, name: str) -> Mapping[Any, Any]:
         """
@@ -227,14 +234,16 @@ class ChartInfo:
         """
         Returns a chart version info.
 
-        :param version: version to locate. If None, returns the latest version.
+        :param version: version to locate. If None, returns the latest version. Can be a semver SimpleSpec.
         :return: the chart version information, or None if not found
         """
         if version is None or version == "":
             return self.latest
 
+        versionspec = semantic_version.SimpleSpec(version)
+
         for r in self.versions:
-            if r.version == version:
+            if versionspec.match(r.version_info):
                 return r
         return None
 
@@ -296,7 +305,7 @@ class RepositoryInfo:
         Returns a chart version info.
 
         :param name: chart name
-        :param version: version to locate. If None, returns the latest version.
+        :param version: version to locate. If None, returns the latest version. Can be a semver SimpleSpec.
         :return: the chart version information, or None if not found
         """
         chart = self.chart(name)
@@ -321,7 +330,7 @@ class RepositoryInfo:
         Returns a chart version info.
 
         :param name: chart name
-        :param version: version to locate. If None, returns the latest version.
+        :param version: version to locate. If None, returns the latest version. Can be a semver SimpleSpec.
         :return: the chart version information
         :raises ParamError: on chart or version not found
         """
