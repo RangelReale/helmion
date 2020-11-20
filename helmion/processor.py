@@ -280,6 +280,8 @@ class FilterRemoveHelmData(Processor):
                         elif self.remove_managedby and lname == 'app.kubernetes.io/managed-by' and \
                                 root['labels'][lname] == 'Helm':
                             del root['labels'][lname]
+                        elif lname == 'heritage' and root['labels'][lname] == 'Helm':
+                            del root['labels'][lname]
                         elif not self.only_exlcusive and lname in labels_general:
                             del root['labels'][lname]
                 if root['labels'] is None or len(root['labels']) == 0:
