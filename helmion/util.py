@@ -1,5 +1,8 @@
-from typing import Sequence, Tuple
+from typing import Sequence, Tuple, Optional, TypedDict
 from urllib.parse import urlparse
+
+from helmion.data import ChartData
+from helmion.exception import ParamError
 
 
 def remove_prefix(text, prefix):
@@ -65,10 +68,53 @@ def is_namedspaced(apiVersion: str, kind: str):
     return True
 
 
-def is_list_resource(apiVersion: str, kind: str) -> bool:
+def is_resource(data: ChartData, apiVersionNS: Optional[str] = None, apiVersionName: Optional[str] = None,
+                kind: Optional[str] = None) -> bool:
+    """
+    Check if data is a resource of this type.
+
+    :param data: chart data
+    :param apiVersionNS: apiVersion namespace field
+    :param apiVersionName: apiVersion name field
+    :param kind: kind field
+    :return: whether the data matches the filter fields
+    :raises ParamError: on parameter error
+    """
+    if apiVersionNS is None and apiVersionName is None and kind is None:
+        raise ParamError('At least one parameter must be set')
+    pversion = parse_apiversion(data['apiVersion'])
+    if apiVersionNS is not None and apiVersionNS != pversion[0]:
+        return False
+    if apiVersionName is not None and apiVersionName != pversion[1]:
+        return False
+    if kind is not None and kind != data['kind']:
+        return False
+    return True
+
+
+class CheckResources(TypedDict, total=False):
+    apiVersionNS: str
+    apiVersionName: str
+    kind: str
+
+
+def is_any_resource(data: ChartData, *resources: CheckResources) -> bool:
+    for resource in resources:
+        if is_resource(data, **resource):
+            return True
+    return False
+
+
+def is_all_resources(data: ChartData, *resources: CheckResources) -> bool:
+    for resource in resources:
+        if not is_resource(data, **resource):
+            return False
+    return True
+
+
+def is_list_resource(data: ChartData) -> bool:
     """
     Check if Kubernetes object is special ```kind: List```
     `Any official docs around Kind: List? <https://github.com/kubernetes/kubectl/issues/837>`_
     """
-    pversion = parse_apiversion(apiVersion)
-    return pversion[0] == '' and kind == 'List'
+    return is_resource(data, apiVersionNS='', kind='List')

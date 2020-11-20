@@ -139,6 +139,16 @@ class Request:
             self.chart, self.version).getValuesFile()
         return self._allowedvalues
 
+    def allowedValuesRaw(self) -> str:
+        """
+        Returns the raw ```values.yaml``` from the chart. It is download from the Internet.
+
+        :return: the contents of the ```values.yaml``` for the chart.
+        """
+        return RepositoryInfo(url=self.repository, config=self.config).chartVersion(
+            self.chart, self.version).readArchiveFiles().archiveFiles['values.yaml']
+        return self._allowedvalues
+
     def generate(self, processor: Optional[Processor] = None) -> 'Chart':
         """
         Call Helm and generate the chart object templates.
@@ -286,7 +296,7 @@ class Chart:
         ret = Chart(self.request)
         for d in self.data:
             newd = copy.deepcopy(d)
-            if self.request.config.parse_list_resource and is_list_resource(newd['apiVersion'], newd['kind']):
+            if self.request.config.parse_list_resource and is_list_resource(newd):
                 # https://github.com/kubernetes/kubectl/issues/837
                 newditems: List[ChartData] = []
                 if 'items' in newd:

@@ -150,14 +150,17 @@ class FilterRemoveHelmData(Processor):
     :param only_exlcusive: if True, only remove items using the ```helm.sh``` parameter namespace, otherwise remove
         all items that are detected to be added by Helm.
     :param remove_hooks: whether to also remove hooks, as they are also on the ```helm.sh``` parameter namespace.
+    :param remove_managedby: whether to remove app.kubernetes.io/managed-by: Helm.
     """
     only_exlcusive: bool
     remove_hooks: bool
+    remove_managedby: bool
 
-    def __init__(self, only_exlcusive: bool = True, remove_hooks: bool = False):
+    def __init__(self, only_exlcusive: bool = True, remove_hooks: bool = False, remove_managedby: bool = True):
         super().__init__()
         self.only_exlcusive = only_exlcusive
         self.remove_hooks = remove_hooks
+        self.remove_managedby = remove_managedby
 
     def mutate(self, request: Request, data: ChartData) -> None:
         """
@@ -189,9 +192,11 @@ class FilterRemoveHelmData(Processor):
                     for lname in list(root['labels'].keys()):
                         if lname.startswith('helm.sh/'):
                             del root['labels'][lname]
+                        elif self.remove_managedby and lname == 'app.kubernetes.io/managed-by' and \
+                                root['labels'][lname] == 'Helm':
+                            del root['labels'][lname]
                         elif not self.only_exlcusive and lname in labels_general:
-                            if lname != 'app.kubernetes.io/managed-by' or root['labels'][lname] == 'Helm':
-                                del root['labels'][lname]
+                            del root['labels'][lname]
                 if root['labels'] is None or len(root['labels']) == 0:
                     del root['labels']
 
