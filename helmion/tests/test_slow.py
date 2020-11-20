@@ -13,6 +13,7 @@ class TestSlow(unittest.TestCase):
         repoinfo = RepositoryInfo('https://helm.traefik.io/traefik')
         self.assertEqual(repoinfo.mustChartVersion('traefik', '9.10.1').version, '9.10.1')
         self.assertEqual(repoinfo.mustChartVersion('traefik', '9.10.1').digest, 'faf6f60da16462bf82112e1aaa72d726f6125f755c576590d98c0c2569d578b6')
+        self.assertEqual(repoinfo.mustChartVersion('traefik', '<9.9.*').version, '9.8.4')
 
     def test_chart_traefik(self):
         req = Request(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',

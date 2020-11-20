@@ -113,6 +113,12 @@ class TestInfo(unittest.TestCase):
         self.assertIsNotNone(chartversion)
         self.assertEqual(chartversion.version, '9.10.1')
 
+    def test_chartversion_simplespec(self):
+        info = RepositoryInfo('http://example.com', rawinfo=self.rawinfo)
+        chartversion = info.chartVersion('traefik', '<9.10.0')
+        self.assertIsNotNone(chartversion)
+        self.assertEqual(chartversion.version, '9.9.0')
+
     def test_chartversion_url(self):
         info = RepositoryInfo('http://example.com', rawinfo=self.rawinfo)
         chartversion = info.chartVersion('traefik')

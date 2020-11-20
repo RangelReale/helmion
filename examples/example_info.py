@@ -2,13 +2,14 @@ import pprint
 
 from helmion.info import RepositoryInfo
 
-# repository_url = 'https://helm.traefik.io/traefik'
-# chart_name = 'traefik'
-# chart_version = '9.10.1'
+repository_url = 'https://helm.traefik.io/traefik'
+chart_name = 'traefik'
+chart_version = '9.10.1'
+# chart_version = '<=9.9.*'
 
-repository_url = 'https://grafana.github.io/loki/charts'
-chart_name = 'loki-stack'
-chart_version = None
+# repository_url = 'https://grafana.github.io/loki/charts'
+# chart_name = 'loki-stack'
+# chart_version = None
 
 repoinfo = RepositoryInfo(repository_url)
 
