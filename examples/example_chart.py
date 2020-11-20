@@ -4,7 +4,7 @@ from jsonpatchext.mutators import InitItemMutator
 
 from helmion.chart import Request, Splitter, ProcessorChain
 from helmion.config import BoolFilter
-from helmion.processor import DefaultProcessor, FilterRemoveHelmData, FilterCRDs
+from helmion.processor import DefaultProcessor, FilterRemoveHelmData, FilterCRDs, DefaultSplitter, ProcessorSplitter
 
 req = Request(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
               releasename='helmion-traefik', namespace='router', values={
@@ -50,12 +50,12 @@ print('')
 print('Split charts by CRDs')
 print('====================')
 
-reqsplitter = Splitter(categories={
+reqsplitter = ProcessorSplitter(processors={
     'crds': FilterCRDs(),
     'default': FilterCRDs(invert_filter=True),
 })
 
-mres = res.split(reqsplitter)
+mres = res.split(list(reqsplitter.processors.keys()), reqsplitter)
 
 for category, category_chart in mres.items():
     print('')
@@ -70,12 +70,9 @@ print('')
 print('Split Deployment and ServiceAccount charts')
 print('==========================================')
 
-reqsplitter = Splitter(categories={
-    'deployment': None,
-    'serviceaccount': None,
-}, categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
+reqsplitter = DefaultSplitter(categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
 
-mres = res.split(reqsplitter)
+mres = res.split(['deployment', 'serviceaccount'], reqsplitter)
 
 for category, category_chart in mres.items():
     print('')

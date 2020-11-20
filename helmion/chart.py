@@ -147,7 +147,6 @@ class Request:
         """
         return RepositoryInfo(url=self.repository, config=self.config).chartVersion(
             self.chart, self.version).readArchiveFiles().archiveFiles['values.yaml']
-        return self._allowedvalues
 
     def generate(self, processor: Optional[Processor] = None) -> 'Chart':
         """
@@ -218,6 +217,8 @@ The possible return types are:
 - ```bool```: True includes the object in ALL categories, False in none
 - ```str```: includes the object only in this category
 - ```List[str]```: includes the object in the list of categories
+- ```None```: inconclusive. If using :class:`SplitterChain`, skip to next splitter, otherwise means
+    the same as False
 """
 
 
@@ -225,33 +226,46 @@ class Splitter:
     """
     Chart splitter configuration.
 
-    This splits chart objects in different categories using functions and filters.
+    Use this to split chart objects in different categories.
 
     It is possible for a chart object to appear in more than one category, depending on the
     splitter configuration.
-
-    :param categories: a ```Mapping``` of category names and optional processor.
-    :param categoryfunc: a function to choose categories for the chart objects. See
-        :data:`SplitterCategoryFuncResult` for details.
     """
-    categories: Mapping[str, Optional[Processor]]
-    categoryfunc: Optional[Callable[[Any], SplitterCategoryFuncResult]]
-
-    def __init__(self, categories: Mapping[str, Optional[Processor]],
-                 categoryfunc: Optional[Callable[[Any], SplitterCategoryFuncResult]] = None):
-        self.categories = categories
-        self.categoryfunc = categoryfunc
-
-    def category(self, data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
         """
         Returns the categories that the chart object should be added to.
 
+        :param request: original chart request
+        :param categories: available categories
         :param data: chart data
         :return: splitter category result. See  :data:`SplitterCategoryFuncResult` for details.
         """
-        if self.categoryfunc is not None:
-            return self.categoryfunc(data)
         return True
+
+
+class SplitterChain(Splitter):
+    """
+    A splitter for chaining multiple :class:`Splitter`.
+
+    :param splitters: list of :class:`Splitter`.
+    """
+    splitters: Sequence[Splitter]
+
+    def __init__(self, *splitters: Splitter):
+        self.splitters = splitters
+
+    def category(self, request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+        """
+        Returns the categories that the chart object should be added to.
+
+        The next splitter in the chain is only called when a splitter returns None. The first one that returns
+        non-None will be the returned value.
+        """
+        for s in self.splitters:
+            sr = s.category(request, categories, data)
+            if sr is not None:
+                return sr
+        return None
 
 
 class Chart:
@@ -322,26 +336,27 @@ class Chart:
 
         return ret
 
-    def split(self, splitter: Splitter) -> Mapping[str, 'Chart']:
+    def split(self, categories: List[str], splitter: Splitter) -> Mapping[str, 'Chart']:
         """
         Splits the chart objects in a list of categories.
 
         Returns new :class:`Chart` instances, the source :class:`Chart` remains unchanged.
 
+        :param categories: list of categories to split.
         :param splitter: the splitter to use to categorize the objects.
         :return: a ```Mapping``` of categories and their charts
         :raises ConfigurationError: on a category that not exists
         """
         ret: Dict[str, 'Chart'] = {}
 
-        for cname in splitter.categories.keys():
+        for cname in categories:
             ret[cname] = Chart(self.request)
 
         for d in self.data:
-            category = splitter.category(d)
+            category = splitter.category(self.request, categories, d)
             categorylist = None
             if category is True:
-                categorylist = list(splitter.categories.keys())
+                categorylist = list(categories)
             elif isinstance(category, str):
                 categorylist = [category]
             elif isinstance(category, Sequence):
@@ -349,13 +364,9 @@ class Chart:
 
             if categorylist is not None:
                 for cname in categorylist:
-                    if cname not in splitter.categories.keys():
+                    if cname not in categories:
                         raise ConfigurationError('Unknown category: {}'.format(cname))
                     ret[cname].data.append(copy.deepcopy(d))
-
-        for cname, cprocessor in splitter.categories.items():
-            if cprocessor is not None:
-                ret[cname] = ret[cname].process(cprocessor)
 
         return ret
 

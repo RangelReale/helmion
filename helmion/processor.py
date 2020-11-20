@@ -1,8 +1,8 @@
-from typing import Any, Optional, Sequence, TypedDict, Callable
+from typing import Any, Optional, Sequence, TypedDict, Callable, Mapping, List
 
 from jsonpatchext import JsonPatchExt
 
-from .chart import Processor, Request
+from .chart import Processor, Request, Splitter, SplitterCategoryFuncResult
 from .config import BoolFilter
 from .data import ChartData
 from .util import helm_hook_anno, is_namedspaced, parse_apiversion
@@ -124,6 +124,43 @@ class DefaultProcessor(Processor):
                 if 'patches' in jp:
                     for patch in jp['patches']:
                         JsonPatchExt(patch).apply(data, in_place=True)
+
+
+class DefaultSplitter(Splitter):
+    """
+    Default chart splitter configuration.
+
+    This splits chart objects in different categories using a functions.
+
+    :param categoryfunc: a function to choose categories for the chart objects. See
+        :data:`SplitterCategoryFuncResult` for details.
+    """
+    categoryfunc: Optional[Callable[[Any], SplitterCategoryFuncResult]]
+
+    def __init__(self, categoryfunc: Callable[[Any], SplitterCategoryFuncResult]):
+        self.categoryfunc = categoryfunc
+
+    def category(self,  request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+        return self.categoryfunc(data)
+
+
+class ProcessorSplitter(Splitter):
+    """
+    Chart splitter using a processor "filter" method.
+
+    :param processors: a ```Mapping``` of category names and processors.
+    """
+    processors: Mapping[str, Processor]
+
+    def __init__(self, processors: Mapping[str, Optional[Processor]]):
+        self.processors = processors
+
+    def category(self,  request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+        ret: List[str] = []
+        for cname, cvalue  in self.processors.items():
+            if cvalue.filter(request, data):
+                ret.append(cname)
+        return ret
 
 
 class FilterCRDs(Processor):
