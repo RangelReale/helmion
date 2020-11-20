@@ -135,7 +135,7 @@ class ChartVersionInfo:
         """
         Search the archive files for relevant files.
 
-        Searched files are: ```['Chart.yaml', 'Chart.lock', 'values.yaml', 'values.schema.json']```.
+        Searched files are: ```['Chart.yaml', 'Chart.lock', 'values.yaml', 'values.schema.json', 'requirements.yaml']```.
         They can be accessed using :data:`archiveFiles` after calling this function.
 
         :return: the instance itself
@@ -152,7 +152,7 @@ class ChartVersionInfo:
                         if parsename.is_absolute():
                             raise InputOutputError('All files in chart archive must be relative')
                         basename = str(pathlib.PurePosixPath(*parsename.parts[1:]))
-                        if basename in ['Chart.yaml', 'Chart.lock', 'values.yaml', 'values.schema.json']:
+                        if basename in ['Chart.yaml', 'Chart.lock', 'values.yaml', 'values.schema.json', 'requirements.yaml']:
                             file = tar_file.extractfile(tarinfo.name)
                             if file is None:
                                 raise InputOutputError('Could not read file "{}" from archive'.format(tarinfo.name))
