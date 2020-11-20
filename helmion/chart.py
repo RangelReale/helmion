@@ -10,7 +10,7 @@ from .config import Config
 from .data import ChartData
 from .exception import HelmError, InputOutputError, ConfigurationError
 from .info import RepositoryInfo
-from .util import is_list_resource
+from .resource import is_list_resource
 
 
 class Processor:

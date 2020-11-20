@@ -13,4 +13,5 @@ Modules
    mod-exception
    mod-info
    mod-processor
+   mod-resource
    mod-util

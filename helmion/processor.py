@@ -5,7 +5,8 @@ from jsonpatchext import JsonPatchExt
 from .chart import Processor, Request, Splitter, SplitterCategoryFuncResult
 from .config import BoolFilter
 from .data import ChartData
-from .util import helm_hook_anno, is_namedspaced, parse_apiversion
+from .util import helm_hook_anno, parse_apiversion
+from .resource import is_namespaced
 
 
 class PatchType(TypedDict, total=False):
@@ -93,7 +94,7 @@ class DefaultProcessor(Processor):
         if self.add_namespace:
             apiVersion = data['apiVersion']
             kind = data['kind']
-            if is_namedspaced(apiVersion, kind):
+            if is_namespaced(apiVersion, kind):
                 if 'metadata' not in data:
                     data['metadata'] = {}
                 if 'namespace' not in data['metadata']:
