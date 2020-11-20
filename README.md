@@ -15,7 +15,7 @@ Helmion is a python library to download and customize [Helm](https://helm.sh/) c
 ```python
 import pprint
 
-from jsonpatchext.mutators import InitItemMutator
+from jsonpatchext.mutators import InitItemMutator  # type: ignore
 
 from helmion.chart import Request, Splitter, ProcessorChain
 from helmion.config import BoolFilter
@@ -85,9 +85,9 @@ print('')
 print('Split Deployment and ServiceAccount charts')
 print('==========================================')
 
-reqsplitter = DefaultSplitter(categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
+reqsplitter2 = DefaultSplitter(categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
 
-mres = res.split(['deployment', 'serviceaccount'], reqsplitter)
+mres = res.split(['deployment', 'serviceaccount'], reqsplitter2)
 
 for category, category_chart in mres.items():
     print('')
@@ -266,11 +266,13 @@ Split Deployment and ServiceAccount charts
 ### Example: info
 
 ```python
-import pprint
-
 from helmion.info import RepositoryInfo
 
-repoinfo = RepositoryInfo('https://helm.traefik.io/traefik')
+repository_url = 'https://helm.traefik.io/traefik'
+chart_name = 'traefik'
+chart_version = '9.10.1'
+
+repoinfo = RepositoryInfo(repository_url)
 
 print('Repository charts')
 print('=================')
@@ -282,19 +284,27 @@ for ci in repoinfo.entries.values():
     for r in ci.versions:
         print('\trelease: {}'.format(r.version))
 
-print('')
-
-print('Chart values file')
-print('===================')
-
-# pprint.pprint(repoinfo.chartVersion('traefik', '9.10.1').getValuesFile())
-print(repoinfo.chartVersion('traefik', '9.10.1').readArchiveFiles().archiveFiles['values.yaml'])
 
 print('')
+print('Chart.yaml')
+print('==========')
 
+# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getChartFile())
+print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('Chart.yaml'))
+
+
+print('')
+print('values.yaml')
+print('===========')
+
+# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getValuesFile())
+print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('values.yaml'))
+
+
+print('')
 print('Chart file contents')
 print('===================')
-with repoinfo.chartVersion('traefik', '9.10.1').fileOpen() as tar_file:
+with repoinfo.mustChartVersion(chart_name, chart_version).fileOpen() as tar_file:
     for fname in tar_file.getnames():
         print("- {}".format(fname))
 ```
@@ -306,7 +316,9 @@ Repository charts
 =================
 Chart: traefik
 Description: A Traefik based Kubernetes ingress controller
-Latest: 9.10.1
+Latest: 9.11.0
+	release: 9.11.0
+	release: 9.10.2
 	release: 9.10.1
 	release: 9.10.0
 	release: 9.9.0
@@ -314,11 +326,35 @@ Latest: 9.10.1
 	release: 9.8.3
 	release: 9.8.2
 	release: 9.8.1
-
 <...more...>
 
-Chart values file
-===================
+Chart.yaml
+==========
+apiVersion: v2
+appVersion: 2.3.1
+description: A Traefik based Kubernetes ingress controller
+home: https://traefik.io/
+icon: https://raw.githubusercontent.com/traefik/traefik/v2.3/docs/content/assets/img/traefik.logo.png
+keywords:
+- traefik
+- ingress
+maintainers:
+- email: emile@vauge.com
+  name: emilevauge
+- email: daniel.tomcej@gmail.com
+  name: dtomcej
+- email: ldez@traefik.io
+  name: ldez
+name: traefik
+sources:
+- https://github.com/traefik/traefik
+- https://github.com/traefik/traefik-helm-chart
+type: application
+version: 9.10.1
+
+
+values.yaml
+===========
 # Default values for Traefik
 image:
   name: traefik
@@ -335,9 +371,6 @@ deployment:
   replicas: 1
   # Additional deployment annotations (e.g. for jaeger-operator sidecar injection)
   annotations: {}
-  # Additional pod annotations (e.g. for mesh injection or prometheus scraping)
-  podAnnotations: {}
-
 <...more...>
 
 Chart file contents
@@ -348,7 +381,8 @@ Chart file contents
 - traefik/templates/dashboard-hook-ingressroute.yaml
 - traefik/templates/deployment.yaml
 - traefik/templates/hpa.yaml
-
+- traefik/templates/ingressclass.yaml
+- traefik/templates/poddisruptionbudget.yaml
 <...more...>
 ```
 

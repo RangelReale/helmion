@@ -1,6 +1,6 @@
 import unittest
 
-from jsonpatchext.mutators import InitItemMutator
+from jsonpatchext.mutators import InitItemMutator  # type: ignore
 
 from helmion.chart import Request, Chart
 from helmion.config import BoolFilter

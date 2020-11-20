@@ -2,13 +2,11 @@ import copy
 import os
 import subprocess
 import tempfile
-from typing import Optional, Mapping, Any, List, Sequence, Union, Callable, Dict
-
-import yaml
+from typing import Optional, Mapping, Any, List, Sequence, Union, Dict
 
 from .config import Config
 from .data import ChartData
-from .exception import HelmError, InputOutputError, ConfigurationError
+from .exception import HelmError, ConfigurationError, ParamError
 from .info import RepositoryInfo
 from .resource import is_list_resource
 
@@ -135,8 +133,11 @@ class Request:
         """
         if not forcedownload and self._allowedvalues is not None:
             return self._allowedvalues
-        self._allowedvalues = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
-            self.chart, self.version).getValuesFile()
+        chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
+            self.chart, self.version)
+        if chartversion is None:
+            raise ParamError('Chart version not found')
+        self._allowedvalues = chartversion.getValuesFile()
         return self._allowedvalues
 
     def allowedValuesRaw(self) -> str:
@@ -145,8 +146,11 @@ class Request:
 
         :return: the contents of the ```values.yaml``` for the chart.
         """
-        return RepositoryInfo(url=self.repository, config=self.config).chartVersion(
-            self.chart, self.version).readArchiveFiles().archiveFiles['values.yaml']
+        chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
+            self.chart, self.version)
+        if chartversion is None:
+            raise ParamError('Chart version not found')
+        return chartversion.getArchiveFile('values.yaml')
 
     def generate(self, processor: Optional[Processor] = None) -> 'Chart':
         """
@@ -177,7 +181,7 @@ class Request:
             if self.values is not None:
                 values_file = os.path.join(tmpdir, 'values.yaml')
                 with open(values_file, 'w') as vfn_dst:
-                    vfn_dst.write(yaml.dump(self.values, Dumper=yaml.Dumper, sort_keys=False))
+                    vfn_dst.write(self.config.yaml_dump(self.values))
                 cmd += ' --values {}'.format(values_file)
 
             try:
@@ -185,10 +189,7 @@ class Request:
             except subprocess.CalledProcessError as e:
                 raise HelmError("Error executing helm: {}".format(e.stderr.decode('utf-8')), cmd=cmd) from e
             out = runcmd.stdout.decode('UTF-8','ignore')
-            try:
-                data = yaml.load_all(out, Loader=yaml.SafeLoader)
-            except yaml.YAMLError as e:
-                raise InputOutputError(str(e)) from e
+            data = self.config.yaml_load_all(out)
 
             ret = Chart(self)
             for d in data:
@@ -208,7 +209,7 @@ class Request:
         return chart
 
 
-SplitterCategoryFuncResult = Optional[Union[bool, str, List[str]]]
+SplitterCategoryFuncResult = Optional[Union[bool, str, Sequence[str]]]
 """
 The :class:`Splitter` categorization function.
 
@@ -216,7 +217,7 @@ The possible return types are:
 
 - ```bool```: True includes the object in ALL categories, False in none
 - ```str```: includes the object only in this category
-- ```List[str]```: includes the object in the list of categories
+- ```Sequence[str]```: includes the object in the list of categories
 - ```None```: inconclusive. If using :class:`SplitterChain`, skip to next splitter, otherwise means
     the same as False
 """
@@ -332,7 +333,8 @@ class Chart:
 
         newdata = processor.mutateComplete(self.request, ret.data)
         if newdata is not None:
-            ret.data = newdata
+            ret.data = []
+            ret.data.extend(newdata)
 
         return ret
 
@@ -354,7 +356,7 @@ class Chart:
 
         for d in self.data:
             category = splitter.category(self.request, categories, d)
-            categorylist = None
+            categorylist: Optional[Sequence[str]] = None
             if category is True:
                 categorylist = list(categories)
             elif isinstance(category, str):

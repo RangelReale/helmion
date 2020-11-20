@@ -1,8 +1,10 @@
-import pprint
-
 from helmion.info import RepositoryInfo
 
-repoinfo = RepositoryInfo('https://helm.traefik.io/traefik')
+repository_url = 'https://helm.traefik.io/traefik'
+chart_name = 'traefik'
+chart_version = '9.10.1'
+
+repoinfo = RepositoryInfo(repository_url)
 
 print('Repository charts')
 print('=================')
@@ -19,21 +21,21 @@ print('')
 print('Chart.yaml')
 print('==========')
 
-# pprint.pprint(repoinfo.chartVersion('traefik', '9.10.1').getChartFile())
-print(repoinfo.chartVersion('traefik', '9.10.1').readArchiveFiles().archiveFiles['Chart.yaml'])
+# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getChartFile())
+print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('Chart.yaml'))
 
 
 print('')
 print('values.yaml')
 print('===========')
 
-# pprint.pprint(repoinfo.chartVersion('traefik', '9.10.1').getValuesFile())
-print(repoinfo.chartVersion('traefik', '9.10.1').readArchiveFiles().archiveFiles['values.yaml'])
+# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getValuesFile())
+print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('values.yaml'))
 
 
 print('')
 print('Chart file contents')
 print('===================')
-with repoinfo.chartVersion('traefik', '9.10.1').fileOpen() as tar_file:
+with repoinfo.mustChartVersion(chart_name, chart_version).fileOpen() as tar_file:
     for fname in tar_file.getnames():
         print("- {}".format(fname))

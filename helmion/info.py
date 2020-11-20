@@ -6,12 +6,11 @@ from io import BytesIO
 from typing import Mapping, Any, Sequence, List, Dict, Optional
 
 import requests
-import semver
-import yaml
+import semver  # type: ignore
 from dateutil.parser import isoparse
 
 from .config import Config
-from .exception import NetworkError, ConfigurationError, InputOutputError
+from .exception import NetworkError, ConfigurationError, InputOutputError, ParamError
 from .util import remove_prefix, is_absolute
 
 
@@ -36,10 +35,10 @@ class ChartVersionInfo:
     created: datetime
     rawinfo: Mapping[Any, Any]
 
-    archiveFiles: Optional[Dict[Any, Any]]
     """Relevant archive files. Available after caling :func:`readArchiveFiles`"""
 
-    _files: Optional[Dict[Any, Any]]
+    _files: Dict[Any, Any]
+    _archiveFiles: Optional[Dict[Any, Any]]
 
     def __init__(self, chart: 'ChartInfo', rawinfo: Mapping[Any, Any]):
         self.rawinfo = rawinfo
@@ -60,7 +59,7 @@ class ChartVersionInfo:
             self.version_info = semver.VersionInfo.parse(remove_prefix(self.version, 'v'))
         except ValueError as e:
             raise ConfigurationError(str(e)) from e
-        self.archiveFiles = None
+        self._archiveFiles = None
         self._files = {}
 
     def fileUrl(self) -> str:
@@ -123,11 +122,14 @@ class ChartVersionInfo:
             raise InputOutputError('Unknown file: {}'.format(name))
         if name in self._files:
             return self._files[name]
-        try:
-            self._files[name] = yaml.load(self.readArchiveFiles().archiveFiles[name], Loader=yaml.SafeLoader)
-            return self._files[name]
-        except yaml.YAMLError as e:
-            raise InputOutputError(str(e)) from e
+        self._files[name] = self.chart.repository.config.yaml_load(self.getArchiveFile(name))
+        return self._files[name]
+
+    def getArchiveFile(self, name: str) -> str:
+        self.readArchiveFiles()
+        if self._archiveFiles is None or name not in self._archiveFiles:
+            raise ParamError('Unknown archive file: {}'.format(name))
+        return self._archiveFiles[name]
 
     def readArchiveFiles(self) -> 'ChartVersionInfo':
         """
@@ -139,7 +141,7 @@ class ChartVersionInfo:
         :return: the instance itself
         :raises InputOutputError: on file IO error
         """
-        if self.archiveFiles is not None:
+        if self._archiveFiles is not None:
             return self
         archiveFiles = {}
         try:
@@ -151,11 +153,13 @@ class ChartVersionInfo:
                             raise InputOutputError('All files in chart archive must be relative')
                         basename = str(pathlib.PurePosixPath(*parsename.parts[1:]))
                         if basename in ['Chart.yaml', 'Chart.lock', 'values.yaml', 'values.schema.json']:
-                            with tar_file.extractfile(tarinfo.name) as file:
-                                archiveFiles[basename] = file.read().decode('utf-8')
+                            file = tar_file.extractfile(tarinfo.name)
+                            if file is None:
+                                raise InputOutputError('Could not read file "{}" from archive'.format(tarinfo.name))
+                            archiveFiles[basename] = file.read().decode('utf-8')
         except tarfile.TarError as e:
             raise InputOutputError(str(e)) from e
-        self.archiveFiles = archiveFiles
+        self._archiveFiles = archiveFiles
         return self
 
 
@@ -232,11 +236,9 @@ class RepositoryInfo:
             try:
                 r = requests.get(posixpath.join(url, 'index.yaml'))
                 r.raise_for_status()
-                rawinfo = yaml.load(r.text, yaml.SafeLoader)
+                rawinfo = self.config.yaml_load(r.text)
             except requests.RequestException as e:
                 raise NetworkError(str(e)) from e
-            except yaml.YAMLError as e:
-                raise InputOutputError(str(e)) from e
 
         self.entries = {}
         self._parseRawInfo(rawinfo)
@@ -273,3 +275,29 @@ class RepositoryInfo:
         if chart is not None:
             return chart.version(version)
         return None
+
+    def mustChart(self, name: str) -> ChartInfo:
+        """
+        Returns a chart by name.
+
+        :param name: chart name
+        :return: the chart information
+        :raises ParamError: on chart or version not found
+        """
+        if name in self.entries:
+            return self.entries[name]
+        raise ParamError('Chart "{}" not found'.format(name))
+
+    def mustChartVersion(self, name: str, version: Optional[str] = None) -> ChartVersionInfo:
+        """
+        Returns a chart version info.
+
+        :param name: chart name
+        :param version: version to locate. If None, returns the latest version.
+        :return: the chart version information
+        :raises ParamError: on chart or version not found
+        """
+        chartversion = self.mustChart(name).version(version)
+        if chartversion is None:
+            raise ParamError('Chart "{}" version "{}" not found'.format(name, version if version is not None else "<latest>"))
+        return chartversion

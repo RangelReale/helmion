@@ -1,6 +1,6 @@
 from typing import Any, Optional, Sequence, TypedDict, Callable, Mapping, List
 
-from jsonpatchext import JsonPatchExt
+from jsonpatchext import JsonPatchExt  # type: ignore
 
 from .chart import Processor, Request, Splitter, SplitterCategoryFuncResult
 from .config import BoolFilter
@@ -137,13 +137,13 @@ class DefaultSplitter(Splitter):
     :param categoryfunc: a function to choose categories for the chart objects. See
         :data:`SplitterCategoryFuncResult` for details.
     """
-    categoryfunc: Optional[Callable[[Any], SplitterCategoryFuncResult]]
+    _categoryfunc: Callable[[Any], SplitterCategoryFuncResult]
 
     def __init__(self, categoryfunc: Callable[[Any], SplitterCategoryFuncResult]):
-        self.categoryfunc = categoryfunc
+        self._categoryfunc = categoryfunc  # type: ignore
 
     def category(self,  request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
-        return self.categoryfunc(data)
+        return self._categoryfunc(data)  # type: ignore
 
 
 class ListSplitter(Splitter):
@@ -193,7 +193,7 @@ class ProcessorSplitter(Splitter):
     require_all: bool
     exactly_one_category: bool
 
-    def __init__(self, processors: Mapping[str, Optional[Processor]], require_all: bool = True,
+    def __init__(self, processors: Mapping[str, Processor], require_all: bool = True,
                  exactly_one_category: bool = True):
         self.processors = processors
         self.require_all = require_all
@@ -257,8 +257,8 @@ class FilterRemoveHelmData(Processor):
         :param data:
         :return:
         """
-        labels_general = ['app.kubernetes.io/managed-by']
-        annotations_general = []
+        labels_general: Sequence[str] = ['app.kubernetes.io/managed-by']
+        annotations_general: Sequence[str] = []
 
         root_data = []
         # Locate all sources of metadata

@@ -1,5 +1,9 @@
 from enum import Enum
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Any, Dict
+
+import yaml
+
+from helmion.exception import InputOutputError
 
 
 class Config:
@@ -27,6 +31,30 @@ class Config:
         self.api_versions = api_versions
         self.sort = sort_objects
         self.parse_list_resource = parse_list_resource
+
+    def yaml_load(self, source: Any) -> Any:
+        try:
+            return yaml.load(source, Loader=yaml.SafeLoader)
+        except yaml.YAMLError as e:
+            raise InputOutputError(str(e)) from e
+
+    def yaml_load_all(self, source: Any) -> Any:
+        try:
+            return yaml.load_all(source, Loader=yaml.SafeLoader)
+        except yaml.YAMLError as e:
+            raise InputOutputError(str(e)) from e
+
+    def yaml_dump(self, source: Any) -> Any:
+        try:
+            return yaml.dump(source, Dumper=yaml.Dumper, sort_keys=False)
+        except yaml.YAMLError as e:
+            raise InputOutputError(str(e)) from e
+
+    def yaml_dump_all(self, source: Any) -> Any:
+        try:
+            return yaml.dump_all(source, Dumper=yaml.Dumper, sort_keys=False)
+        except yaml.YAMLError as e:
+            raise InputOutputError(str(e)) from e
 
 
 class BoolFilter(Enum):

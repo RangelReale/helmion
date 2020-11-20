@@ -1,6 +1,6 @@
 import pprint
 
-from jsonpatchext.mutators import InitItemMutator
+from jsonpatchext.mutators import InitItemMutator  # type: ignore
 
 from helmion.chart import Request, Splitter, ProcessorChain
 from helmion.config import BoolFilter
@@ -70,9 +70,9 @@ print('')
 print('Split Deployment and ServiceAccount charts')
 print('==========================================')
 
-reqsplitter = DefaultSplitter(categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
+reqsplitter2 = DefaultSplitter(categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
 
-mres = res.split(['deployment', 'serviceaccount'], reqsplitter)
+mres = res.split(['deployment', 'serviceaccount'], reqsplitter2)
 
 for category, category_chart in mres.items():
     print('')
