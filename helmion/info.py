@@ -11,7 +11,7 @@ from dateutil.parser import isoparse
 
 from .config import Config
 from .exception import NetworkError, ConfigurationError, InputOutputError, ParamError
-from .util import remove_prefix, is_absolute
+from .util import remove_prefix, is_absolute_url, resolve_dependency_url
 
 
 class ChartVersionInfo:
@@ -58,7 +58,10 @@ class ChartVersionInfo:
         try:
             self.version_info = semantic_version.Version(remove_prefix(self.version, 'v'))
         except ValueError as e:
-            raise ConfigurationError(str(e)) from e
+            try:
+                self.version_info = semantic_version.Version.coerce(remove_prefix(self.version, 'v'))
+            except ValueError as e:
+                raise ConfigurationError(str(e)) from e
         self._archiveFiles = None
         self._files = {}
 
@@ -71,7 +74,7 @@ class ChartVersionInfo:
         if self.urls is None or len(self.urls) == 0:
             raise InputOutputError('Chart version does not have file urls')
 
-        if is_absolute(self.urls[0]):
+        if is_absolute_url(self.urls[0]):
             return self.urls[0]
         return posixpath.join(self.chart.repository.url, self.urls[0])
 
@@ -109,9 +112,9 @@ class ChartVersionInfo:
         """
         return self._getFile('values.yaml')
 
-    def getDependencies(self) -> Mapping[str, Any]:
+    def getDependenciesList(self) -> List[Mapping[Any, Any]]:
         """
-        Returns the chart dependencies.
+        Returns the chart dependencies as a list.
 
         :return: dependencies
         :raises ConfigurationError: on configuration error
@@ -120,23 +123,55 @@ class ChartVersionInfo:
         if chartfile['apiVersion'] == 'v2':
             if 'dependencies' in chartfile:
                 return chartfile['dependencies']
-            return {}
+            return []
         elif chartfile['apiVersion'] == 'v1':
             self.readArchiveFiles()
             if self._archiveFiles is not None and 'requirements.yaml' in self._archiveFiles:
-                return self._getFile('requirements.yaml')
-            return {}
+                return self._getFile('requirements.yaml')['dependencies']
+            return []
         else:
             raise ConfigurationError('Unknown chart file version: {}'.format(chartfile))
 
-    # def getDependenciesCharts(self) -> Mapping[str, 'ChartVersionInfo']:
-    #     deps = self.getDependencies()
-    #     ret: Dict[str, 'ChartVersionInfo'] = {}
-    #     for dep in deps:
-    #
-    #     return ret
+    def getDependencies(self) -> Mapping[Any, Any]:
+        """
+        Returns the chart dependencies.
 
-    def _getFile(self, name: str) -> Mapping[Any, Any]:
+        :return: dependencies
+        :raises ConfigurationError: on configuration error
+        """
+        ret: Dict[Any, Any] = {}
+        for dep in self.getDependenciesList():
+            ret[dep['name']] = dep
+        return ret
+
+    def getDependencyChart(self, name: str) -> 'ChartVersionInfo':
+        """
+        Downloads the chart of the named dependency.
+
+        :param name: dependency name
+        :return: :class:`ChartVersionInfo` downloaded from the dependency
+        :raises ParamError: on dependency not found
+        """
+        deps = self.getDependencies()
+        if name not in deps:
+            raise ParamError('Unknown dependency: {}'.format(name))
+        dep = deps[name]
+        drepo = resolve_dependency_url(self.chart.repository.url, dep['repository'])
+        return RepositoryInfo(drepo).mustChartVersion(dep['name'], dep['version'])
+
+    def getDependenciesCharts(self) -> Mapping[str, 'ChartVersionInfo']:
+        """
+        Downloads the chart of all dependencies.
+
+        :return: Mapping of :class:`ChartVersionInfo` downloaded from the dependencies
+        """
+        deps = self.getDependenciesList()
+        ret: Dict[str, 'ChartVersionInfo'] = {}
+        for dep in deps:
+            ret[dep['name']] = self.getDependencyChart(dep['name'])
+        return ret
+
+    def _getFile(self, name: str) -> Any:
         """
         Returns the requested file as a class:`Mapping`.
         Only ```'Chart.yaml``` and ```values.yaml'`` are supported.

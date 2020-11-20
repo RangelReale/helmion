@@ -1,6 +1,8 @@
 import os
 import unittest
 
+import semantic_version
+
 from helmion.chart import Request
 from helmion.info import RepositoryInfo
 
@@ -20,3 +22,11 @@ class TestSlow(unittest.TestCase):
                       releasename='helmion-traefik', namespace='router')
         res = req.generate()
         self.assertEqual(len([x for x in res.data if x['kind'] == 'Deployment']), 1)
+
+    def test_chart_deps_compat(self):
+        repoinfo = RepositoryInfo('https://grafana.github.io/loki/charts')
+        chartversion = repoinfo.mustChartVersion('loki-stack', '2.0.3')
+        self.assertEqual(chartversion.version, '2.0.3')
+        depchartversion = chartversion.getDependencyChart('fluent-bit')
+        cv = semantic_version.SimpleSpec('^2.0.0')
+        self.assertTrue(cv.match(semantic_version.Version(depchartversion.version)))
