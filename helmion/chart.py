@@ -110,6 +110,7 @@ class Request:
     sets: Optional[Mapping[str, str]]
     values: Optional[Mapping[str, Any]]
     _allowedvalues: Optional[Mapping[str, Any]]
+    _allowedvalueswithdeps: Optional[Mapping[str, Any]]
 
     def __init__(self, repository: str, chart: str, version: str, releasename: Optional[str] = None,
                  namespace: Optional[str] = None, sets: Optional[Mapping[str, str]] = None,
@@ -123,6 +124,7 @@ class Request:
         self.sets = sets
         self.values = values
         self._allowedvalues = None
+        self._allowedvalueswithdeps = None
 
     def allowedValues(self, forcedownload: bool = False) -> Mapping[str, Any]:
         """
@@ -139,6 +141,23 @@ class Request:
             raise ParamError('Chart version not found')
         self._allowedvalues = chartversion.getValuesFile()
         return self._allowedvalues
+
+    def allowedValuesWithDependencies(self, forcedownload: bool = False) -> Mapping[str, Any]:
+        """
+        Returns the parsed ```values.yaml``` from the chart merged with each dependency ones.
+        It is download from the Internet on first access.
+
+        :param forcedownload: whether to force download even if already cached in memory.
+        :return: a :class:`Mapping` of the ```values.yaml``` for the chart merged with each dependency.
+        """
+        if not forcedownload and self._allowedvalueswithdeps is not None:
+            return self._allowedvalueswithdeps
+        chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
+            self.chart, self.version)
+        if chartversion is None:
+            raise ParamError('Chart version not found')
+        self._allowedvalueswithdeps = chartversion.getValuesFileWithDependencies()
+        return self._allowedvalueswithdeps
 
     def allowedValuesRaw(self) -> str:
         """
