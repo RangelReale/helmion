@@ -102,17 +102,17 @@ class Request:
     :param config: configuration
     """
     config: Config
-    repository: str
     chart: str
     version: str
     releasename: str
+    repository: Optional[str]
     namespace: Optional[str]
     sets: Optional[Mapping[str, str]]
     values: Optional[Mapping[str, Any]]
     _allowedvalues: Optional[Mapping[str, Any]]
     _allowedvalueswithdeps: Optional[Mapping[str, Any]]
 
-    def __init__(self, repository: str, chart: str, version: str, releasename: Optional[str] = None,
+    def __init__(self, chart: str, version: str, repository: Optional[str] = None, releasename: Optional[str] = None,
                  namespace: Optional[str] = None, sets: Optional[Mapping[str, str]] = None,
                  values: Optional[Mapping[str, Any]] = None, config: Optional[Config] = None):
         self.config = config if config is not None else Config()
@@ -133,6 +133,8 @@ class Request:
         :param forcedownload: whether to force download even if already cached in memory.
         :return: a :class:`Mapping` of the ```values.yaml``` for the chart.
         """
+        if self.repository is None:
+            raise ConfigurationError('Repository must be set to use this method')
         if not forcedownload and self._allowedvalues is not None:
             return self._allowedvalues
         chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
@@ -150,6 +152,8 @@ class Request:
         :param forcedownload: whether to force download even if already cached in memory.
         :return: a :class:`Mapping` of the ```values.yaml``` for the chart merged with each dependency.
         """
+        if self.repository is None:
+            raise ConfigurationError('Repository must be set to use this method')
         if not forcedownload and self._allowedvalueswithdeps is not None:
             return self._allowedvalueswithdeps
         chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
@@ -165,6 +169,8 @@ class Request:
 
         :return: the contents of the ```values.yaml``` for the chart.
         """
+        if self.repository is None:
+            raise ConfigurationError('Repository must be set to use this method')
         chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
             self.chart, self.version)
         if chartversion is None:
@@ -181,10 +187,14 @@ class Request:
         :raises InputOutputError: on IO error
         """
         with tempfile.TemporaryDirectory() as tmpdir:
-            cmd = '{} template {} {} --repo {} --include-crds'.format(
-                self.config.helm_bin, self.releasename, self.chart, self.repository)
+            cmd = '{} template {} {}'.format(
+                self.config.helm_bin, self.releasename, self.chart)
             if self.config.helm_debug:
                 cmd += ' --debug'
+            if self.config.include_crds:
+                cmd += ' --include-crds'
+            if self.repository is not None:
+                cmd += ' --repo {}'.format(self.repository)
             if self.namespace is not None:
                 cmd += ' --namespace {}'.format(self.namespace)
             if self.version is not None:

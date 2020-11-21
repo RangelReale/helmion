@@ -23,16 +23,18 @@ class Config:
     api_versions: Optional[Sequence[str]]
     sort: bool
     parse_list_resource: bool
+    include_crds: bool
 
     def __init__(self, helm_bin: str = 'helm', helm_debug: bool = False, kube_version: Optional[str] = None,
                  api_versions: Optional[Sequence[str]] = None, sort_objects: bool = False,
-                 parse_list_resource: bool = True):
+                 parse_list_resource: bool = True, include_crds: bool = True):
         self.helm_bin = helm_bin
         self.helm_debug = helm_debug
         self.kube_version = kube_version
         self.api_versions = api_versions
         self.sort = sort_objects
         self.parse_list_resource = parse_list_resource
+        self.include_crds = include_crds
 
     def yaml_load(self, source: Any) -> Any:
         try:
