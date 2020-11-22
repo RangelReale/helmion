@@ -1,13 +1,9 @@
 import copy
-import os
-import subprocess
-import tempfile
-from typing import Optional, Mapping, Any, List, Sequence, Union, Dict
+from typing import Optional, Mapping, List, Sequence, Union, Dict
 
 from .config import Config
 from .data import ChartData
-from .exception import HelmError, ConfigurationError, ParamError
-from .info import RepositoryInfo
+from .exception import ConfigurationError
 from .resource import is_list_resource
 
 
@@ -15,39 +11,39 @@ class Processor:
     """
     Processor filters and mutates charts and its objects.
     """
-    def filter(self, request: 'Request', data: ChartData) -> bool:
+    def filter(self, chart: 'Chart', data: ChartData) -> bool:
         """
         Filters chart objects.
 
-        :param request: original chart request
+        :param chart: original chart
         :param data: chart object data
         :return: True to include the object, False to exclude it
         """
         return True
 
-    def mutateBefore(self, request: 'Request', data: ChartData) -> None:
+    def mutateBefore(self, chart: 'Chart', data: ChartData) -> None:
         """
         Mutate chart object before filtering.
 
-        :param request: original chart request
+        :param chart: original chart
         :param data: chart object data
         """
         pass
 
-    def mutate(self, request: 'Request', data: ChartData) -> None:
+    def mutate(self, chart: 'Chart', data: ChartData) -> None:
         """
         Mutate chart object after filtering.
 
-        :param request: original chart request
+        :param chart: original chart
         :param data: chart object data
         """
         pass
 
-    def mutateComplete(self, request: 'Request', data: Sequence[ChartData]) -> Optional[Sequence[ChartData]]:
+    def mutateComplete(self, chart: 'Chart', data: Sequence[ChartData]) -> Optional[Sequence[ChartData]]:
         """
         Mutate complete chart objects after all other processing.
 
-        :param request: original chart request
+        :param chart: original chart
         :param data: list of chart object data
         :returns: if not None, replaces the complete chart object data with the result, otherwise keep
             the current value.
@@ -66,182 +62,27 @@ class ProcessorChain(Processor):
     def __init__(self, *processor: Processor):
         self.processors = processor
 
-    def filter(self, request: 'Request', data: ChartData) -> bool:
+    def filter(self, chart: 'Chart', data: ChartData) -> bool:
         for p in self.processors:
-            if not p.filter(request, data):
+            if not p.filter(chart, data):
                 return False
         return True
 
-    def mutateBefore(self, request: 'Request', data: ChartData) -> None:
+    def mutateBefore(self, chart: 'Chart', data: ChartData) -> None:
         for p in self.processors:
-            p.mutateBefore(request, data)
+            p.mutateBefore(chart, data)
 
-    def mutate(self, request: 'Request', data: ChartData) -> None:
+    def mutate(self, chart: 'Chart', data: ChartData) -> None:
         for p in self.processors:
-            p.mutate(request, data)
+            p.mutate(chart, data)
 
-    def mutateComplete(self, request: 'Request', data: Sequence[ChartData]) -> Optional[Sequence[ChartData]]:
+    def mutateComplete(self, chart: 'Chart', data: Sequence[ChartData]) -> Optional[Sequence[ChartData]]:
         lastdata = data
         for p in self.processors:
-            pret = p.mutateComplete(request, lastdata)
+            pret = p.mutateComplete(chart, lastdata)
             if pret is not None:
                 lastdata = pret
         return lastdata
-
-
-class Request:
-    """
-    A chart template request.
-
-    :param repository: Helm repository url
-    :param chart: chart name
-    :param releasename: a release name. If None, will use value of ```chart```
-    :param namespace: target Kubernetes namespace. If None, no namespace will be sent to Helm
-    :param sets: Helm ```--set``` parameters
-    :param values: Values to be sent to Helm ```--values``` parameter
-    :param config: configuration
-    """
-    config: Config
-    chart: str
-    version: str
-    releasename: str
-    repository: Optional[str]
-    namespace: Optional[str]
-    sets: Optional[Mapping[str, str]]
-    values: Optional[Mapping[str, Any]]
-    _allowedvalues: Optional[Mapping[str, Any]]
-    _allowedvalueswithdeps: Optional[Mapping[str, Any]]
-
-    def __init__(self, chart: str, version: str, repository: Optional[str] = None, releasename: Optional[str] = None,
-                 namespace: Optional[str] = None, sets: Optional[Mapping[str, str]] = None,
-                 values: Optional[Mapping[str, Any]] = None, config: Optional[Config] = None):
-        self.config = config if config is not None else Config()
-        self.repository = repository
-        self.chart = chart
-        self.version = version
-        self.releasename = releasename if releasename is not None else chart
-        self.namespace = namespace
-        self.sets = sets
-        self.values = values
-        self._allowedvalues = None
-        self._allowedvalueswithdeps = None
-
-    def allowedValues(self, forcedownload: bool = False) -> Mapping[str, Any]:
-        """
-        Returns the parsed ```values.yaml``` from the chart. It is download from the Internet on first access.
-
-        :param forcedownload: whether to force download even if already cached in memory.
-        :return: a :class:`Mapping` of the ```values.yaml``` for the chart.
-        """
-        if self.repository is None:
-            raise ConfigurationError('Repository must be set to use this method')
-        if not forcedownload and self._allowedvalues is not None:
-            return self._allowedvalues
-        chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
-            self.chart, self.version)
-        if chartversion is None:
-            raise ParamError('Chart version not found')
-        self._allowedvalues = chartversion.getValuesFile()
-        return self._allowedvalues
-
-    def allowedValuesWithDependencies(self, forcedownload: bool = False) -> Mapping[str, Any]:
-        """
-        Returns the parsed ```values.yaml``` from the chart merged with each dependency ones.
-        It is download from the Internet on first access.
-
-        :param forcedownload: whether to force download even if already cached in memory.
-        :return: a :class:`Mapping` of the ```values.yaml``` for the chart merged with each dependency.
-        """
-        if self.repository is None:
-            raise ConfigurationError('Repository must be set to use this method')
-        if not forcedownload and self._allowedvalueswithdeps is not None:
-            return self._allowedvalueswithdeps
-        chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
-            self.chart, self.version)
-        if chartversion is None:
-            raise ParamError('Chart version not found')
-        self._allowedvalueswithdeps = chartversion.getValuesFileWithDependencies()
-        return self._allowedvalueswithdeps
-
-    def allowedValuesRaw(self) -> str:
-        """
-        Returns the raw ```values.yaml``` from the chart. It is download from the Internet.
-
-        :return: the contents of the ```values.yaml``` for the chart.
-        """
-        if self.repository is None:
-            raise ConfigurationError('Repository must be set to use this method')
-        chartversion = RepositoryInfo(url=self.repository, config=self.config).chartVersion(
-            self.chart, self.version)
-        if chartversion is None:
-            raise ParamError('Chart version not found')
-        return chartversion.getArchiveFile('values.yaml')
-
-    def generate(self, processor: Optional[Processor] = None) -> 'Chart':
-        """
-        Call Helm and generate the chart object templates.
-
-        :param processor: processor to apply to returned object templates.
-        :return: a :class:`Chart` instance containing the chart generated templates.
-        :raises HelmError: on helm command errors
-        :raises InputOutputError: on IO error
-        """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cmd = '{} template {} {}'.format(
-                self.config.helm_bin, self.releasename, self.chart)
-            if self.config.helm_debug:
-                cmd += ' --debug'
-            if self.config.include_crds:
-                cmd += ' --include-crds'
-            if self.repository is not None:
-                cmd += ' --repo {}'.format(self.repository)
-            if self.namespace is not None:
-                cmd += ' --namespace {}'.format(self.namespace)
-            if self.version is not None:
-                cmd += ' --version {}'.format(self.version)
-            if self.config.kube_version is not None:
-                cmd += ' --kube-version {}'.format(self.config.kube_version)
-            if self.config.api_versions is not None:
-                for apiver in self.config.api_versions:
-                    cmd += ' --api-versions {}'.format(apiver)
-
-            if self.sets is not None:
-                for k,v in self.sets.items():
-                    cmd += " --set {}='{}'".format(k, v)
-
-            if self.values is not None:
-                values_file = os.path.join(tmpdir, 'values.yaml')
-                with open(values_file, 'w') as vfn_dst:
-                    vfn_dst.write(self.config.yaml_dump(self.values))
-                cmd += ' --values {}'.format(values_file)
-
-            try:
-                runcmd = subprocess.run(cmd, shell=True, check=True, capture_output=True)
-            except subprocess.CalledProcessError as e:
-                raise HelmError("Error executing helm: {}".format(e.stderr.decode('utf-8')), cmd=cmd) from e
-            out = runcmd.stdout.decode('UTF-8','ignore')
-            data: ChartData = self.config.yaml_load_all(out)
-
-            ret = Chart(self)
-            for d in data:
-                if d is None:
-                    continue
-                if not isinstance(d, Mapping):
-                    raise HelmError('Unknown data type in Helm template output: "{}"', repr(d))
-                ret.data.append(d)
-
-        return self.postprocess(ret.process(processor))
-
-    def postprocess(self, chart: 'Chart') -> 'Chart':
-        """
-        Postprocess the chart.
-
-        :param chart: chart to postprocess
-        :return: the postprocessed chart
-        """
-        if self.config.sort:
-            chart.sort()
-        return chart
 
 
 SplitterCategoryFuncResult = Optional[Union[bool, str, Sequence[str]]]
@@ -267,11 +108,11 @@ class Splitter:
     It is possible for a chart object to appear in more than one category, depending on the
     splitter configuration.
     """
-    def category(self, request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, chart: 'Chart', categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
         """
         Returns the categories that the chart object should be added to.
 
-        :param request: original chart request
+        :param chart: original chart
         :param categories: available categories
         :param data: chart data
         :return: splitter category result. See  :data:`SplitterCategoryFuncResult` for details.
@@ -290,7 +131,7 @@ class SplitterChain(Splitter):
     def __init__(self, *splitters: Splitter):
         self.splitters = splitters
 
-    def category(self, request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, chart: 'Chart', categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
         """
         Returns the categories that the chart object should be added to.
 
@@ -298,7 +139,7 @@ class SplitterChain(Splitter):
         non-None will be the returned value.
         """
         for s in self.splitters:
-            sr = s.category(request, categories, data)
+            sr = s.category(chart, categories, data)
             if sr is not None:
                 return sr
         return None
@@ -306,28 +147,39 @@ class SplitterChain(Splitter):
 
 class Chart:
     """
-    Chart represents a set of object Kubernetes generated from a Helm chart.
+    Chart represents a set of object Kubernetes.
 
-    :param request: Chart request
+    :param config: Config
+    :param data: Initial data
     """
-    request: Request
+    config: Config
     data: List[ChartData]
     """List of objected generated from the Helm chart"""
 
-    def __init__(self, request: Request, data: Optional[Sequence[ChartData]] = None):
-        self.request = request
+    def __init__(self, config: Optional[Config] = None, data: Optional[Sequence[ChartData]] = None):
+        self.config = config if config is not None else Config()
         self.data = []
         if data is not None:
             self.data.extend(data)
 
-    def clone(self) -> 'Chart':
+    def createClone(self) -> 'Chart':
         """
-        Clones the current chart.
+        Create a clones of current chart. The data should NOT be copied.
 
         :return: a clone of the current :class:`Chart` class
         """
-        ret = Chart(self.request)
-        ret.data = copy.deepcopy(self.data)
+        return Chart(self.config)
+
+    def clone(self, clone_data: bool = True) -> 'Chart':
+        """
+        Clones the current chart.
+
+        :param clone_data: whether to also clone data
+        :return: a clone of the current :class:`Chart` class
+        """
+        ret = self.createClone()
+        if clone_data:
+            ret.data = copy.deepcopy(self.data)
         return ret
 
     def process(self, processor: Optional[Processor]) -> 'Chart':
@@ -343,30 +195,30 @@ class Chart:
         if processor is None:
             return self
 
-        ret = Chart(self.request)
+        ret = self.clone(clone_data=False)
         for d in self.data:
             newd = copy.deepcopy(d)
-            if self.request.config.parse_list_resource and is_list_resource(newd):
+            if self.config.parse_list_resource and is_list_resource(newd):
                 # https://github.com/kubernetes/kubectl/issues/837
                 newditems: List[ChartData] = []
                 if 'items' in newd:
                     for newditem in newd['items']:
-                        processor.mutateBefore(self.request, newditem)
-                        if not processor.filter(self.request, newditem):
+                        processor.mutateBefore(self, newditem)
+                        if not processor.filter(self, newditem):
                             continue
-                        processor.mutate(self.request, newditem)
+                        processor.mutate(self, newditem)
                         newditems.append(newditem)
                 if len(newditems) == 0:
                     continue
                 newd['items'] = newditems
             else:
-                processor.mutateBefore(self.request, newd)
-                if not processor.filter(self.request, newd):
+                processor.mutateBefore(self, newd)
+                if not processor.filter(self, newd):
                     continue
-                processor.mutate(self.request, newd)
+                processor.mutate(self, newd)
             ret.data.append(newd)
 
-        newdata = processor.mutateComplete(self.request, ret.data)
+        newdata = processor.mutateComplete(self, ret.data)
         if newdata is not None:
             ret.data = []
             ret.data.extend(newdata)
@@ -387,10 +239,10 @@ class Chart:
         ret: Dict[str, 'Chart'] = {}
 
         for cname in categories:
-            ret[cname] = Chart(self.request)
+            ret[cname] = self.clone(clone_data=False)
 
         for d in self.data:
-            category = splitter.category(self.request, categories, d)
+            category = splitter.category(self, categories, d)
             categorylist: Optional[Sequence[str]] = None
             if category is True:
                 categorylist = list(categories)
@@ -407,7 +259,7 @@ class Chart:
 
         return ret
 
-    def sort(self):
+    def sort(self) -> 'Chart':
         """
         Sort resource list by resource name, but without changing overall resource kind sorting
         """
@@ -423,3 +275,5 @@ class Chart:
             last_kind = kind
         out += sorted(tmp, key=lambda r: r['metadata']['name'])
         self.data = out
+
+        return self

@@ -1,8 +1,9 @@
-from typing import Any, Optional, Sequence, TypedDict, Callable, Mapping, List
+from typing import Any, Optional, Sequence, TypedDict, Callable, Mapping, List, Union
 
 from jsonpatchext import JsonPatchExt  # type: ignore
 
-from .chart import Processor, Request, Splitter, SplitterCategoryFuncResult
+from .chart import Processor, Splitter, SplitterCategoryFuncResult
+from .helmchart import HelmRequest, HelmChart
 from .config import BoolFilter
 from .data import ChartData
 from .exception import ParamError
@@ -37,8 +38,8 @@ class DefaultProcessor(Processor):
     """
     A default processor for common filters.
 
-    :param add_namespace: if True, sets the namespace from :class:`Request` to all namespaced Kubernetes objects
-        if not already set.
+    :param add_namespace: if True or str, sets the namespace to all namespaced Kubernetes objects
+        if not already set. ```True``` is only available for Helm charts, since it contains a "namespace" property.
     :param namespaced_filter: If ```BoolFilter.IF_TRUE``` includes only objects containing a "metadata.namespace"
         property. If ```BoolFilter.IF_FALSE```, includes only objects NOT containing a "metadata.namespace"
         property. If ```BoolFilter.ALL```, don't filter namespaces.
@@ -49,14 +50,14 @@ class DefaultProcessor(Processor):
     :param jsonpatches: :mod:`jsonpatchext` patches to apply. See :data:`PatchType`.
     :param filterfunc: a callable to call on each object to check for inclusion.
     """
-    add_namespace: bool
+    add_namespace: Union[str, bool]
     namespaced_filter: BoolFilter
     hook_filter: BoolFilter
     hook_filter_list: Optional[Sequence[str]]
     jsonpatches: Optional[Sequence[PatchType]]
     filterfunc: Optional[FilterFunc]
 
-    def __init__(self, add_namespace: bool = False, namespaced_filter: BoolFilter = BoolFilter.ALL,
+    def __init__(self, add_namespace: Union[str, bool] = False, namespaced_filter: BoolFilter = BoolFilter.ALL,
                  hook_filter: BoolFilter = BoolFilter.ALL, hook_filter_list: Optional[Sequence[str]] = None,
                  jsonpatches: Optional[Sequence[PatchType]] = None,
                  filterfunc: Optional[FilterFunc] = None):
@@ -67,7 +68,7 @@ class DefaultProcessor(Processor):
         self.jsonpatches = jsonpatches
         self.filterfunc = filterfunc
 
-    def filter(self, request: Request, data: ChartData) -> bool:
+    def filter(self, chart: HelmRequest, data: ChartData) -> bool:
         if self.namespaced_filter != BoolFilter.ALL:
             is_ns = 'metadata' in data and 'namespace' in data['metadata']
             if is_ns != (self.namespaced_filter == BoolFilter.IF_TRUE):
@@ -90,18 +91,23 @@ class DefaultProcessor(Processor):
 
         return True
 
-    def mutateBefore(self, request: Request, data: ChartData) -> None:
+    def mutateBefore(self, chart: HelmRequest, data: ChartData) -> None:
         # Add namespace
-        if self.add_namespace:
+        if self.add_namespace is not False:
             apiVersion = data['apiVersion']
             kind = data['kind']
             if is_namespaced(apiVersion, kind):
                 if 'metadata' not in data:
                     data['metadata'] = {}
                 if 'namespace' not in data['metadata']:
-                    data['metadata']['namespace'] = request.namespace
+                    namespace = self.add_namespace
+                    if namespace is True:
+                        if not isinstance(chart, HelmChart):
+                            raise ParamError('Automatic namespace name is only available for Helm charts')
+                        namespace = chart.request.namespace
+                    data['metadata']['namespace'] = namespace
 
-    def mutate(self, request: Request, data: ChartData) -> None:
+    def mutate(self, chart: HelmRequest, data: ChartData) -> None:
         def do_check(check):
             if callable(check):
                 return check(data)
@@ -142,7 +148,7 @@ class DefaultSplitter(Splitter):
     def __init__(self, categoryfunc: Callable[[Any], SplitterCategoryFuncResult]):
         self._categoryfunc = categoryfunc  # type: ignore
 
-    def category(self,  request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, chart: HelmRequest, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
         return self._categoryfunc(data)  # type: ignore
 
 
@@ -159,20 +165,20 @@ class ListSplitter(Splitter):
     :param require_all: require that all chart data are returned in at least one category
     :param exactly_one_category: require all that to be returned to exactly one category
     """
-    categories: Mapping[str, Callable[[str, Request, ChartData], bool]]
+    categories: Mapping[str, Callable[[str, HelmRequest, ChartData], bool]]
     require_all: bool
     exactly_one_category: bool
 
-    def __init__(self, categories: Mapping[str, Callable[[str, Request, ChartData], bool]], require_all: bool = True,
+    def __init__(self, categories: Mapping[str, Callable[[str, HelmRequest, ChartData], bool]], require_all: bool = True,
                  exactly_one_category: bool = True):
         self.categories = categories
         self.require_all = require_all
         self.exactly_one_category = exactly_one_category
 
-    def category(self,  request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, chart: HelmRequest, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
         ret: List[str] = []
         for cname, cvalue in self.categories.items():
-            if cvalue(cname, request, data):
+            if cvalue(cname, chart, data):
                 ret.append(cname)
         if len(ret) == 0 and self.require_all:
             raise ParamError('All data area required to have categories, but "{}" have none'.format(repr(data)))
@@ -199,10 +205,10 @@ class ProcessorSplitter(Splitter):
         self.require_all = require_all
         self.exactly_one_category = exactly_one_category
 
-    def category(self,  request: Request, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, chart: HelmRequest, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
         ret: List[str] = []
         for cname, cvalue  in self.processors.items():
-            if cvalue.filter(request, data):
+            if cvalue.filter(chart, data):
                 ret.append(cname)
         if len(ret) == 0 and self.require_all:
             raise ParamError('All data area required to have categories, but "{}" have none'.format(repr(data)))
@@ -223,7 +229,7 @@ class FilterCRDs(Processor):
         super().__init__()
         self.invert_filter = invert_filter
 
-    def filter(self, request: Request, data: ChartData) -> bool:
+    def filter(self, chart: HelmRequest, data: ChartData) -> bool:
         value = parse_apiversion(data['apiVersion'])[0] == 'apiextensions.k8s.io' and data['kind'] == 'CustomResourceDefinition'
         return value != self.invert_filter
 
@@ -247,13 +253,13 @@ class FilterRemoveHelmData(Processor):
         self.remove_hooks = remove_hooks
         self.remove_managedby = remove_managedby
 
-    def mutate(self, request: Request, data: ChartData) -> None:
+    def mutate(self, chart: HelmRequest, data: ChartData) -> None:
         """
         Removes Helm data.
 
         If label *app.kubernetes.io/managed-by == Helm*, it is also removed.
 
-        :param request:
+        :param chart:
         :param data:
         :return:
         """

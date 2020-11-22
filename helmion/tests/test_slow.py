@@ -3,7 +3,7 @@ import unittest
 
 import semantic_version
 
-from helmion.chart import Request
+from helmion.helmchart import HelmRequest
 from helmion.info import RepositoryInfo
 
 SLOW_TESTS = int(os.getenv('SLOW_TESTS', '0'))
@@ -18,8 +18,8 @@ class TestSlow(unittest.TestCase):
         self.assertEqual(repoinfo.mustChartVersion('traefik', '<9.9.*').version, '9.8.4')
 
     def test_chart_traefik(self):
-        req = Request(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
-                      releasename='helmion-traefik', namespace='router')
+        req = HelmRequest(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
+                          releasename='helmion-traefik', namespace='router')
         res = req.generate()
         self.assertEqual(len([x for x in res.data if x['kind'] == 'Deployment']), 1)
 

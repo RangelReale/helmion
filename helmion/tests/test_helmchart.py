@@ -2,7 +2,6 @@ import unittest
 
 from jsonpatchext.mutators import InitItemMutator  # type: ignore
 
-from helmion.chart import Chart
 from helmion.helmchart import HelmRequest, HelmChart
 from helmion.config import BoolFilter
 from helmion.processor import DefaultProcessor
@@ -10,7 +9,9 @@ from helmion.processor import DefaultProcessor
 
 class TestInfo(unittest.TestCase):
     def setUp(self):
-        self.chart = Chart(data=[{
+        self.req = HelmRequest(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
+                               releasename='helmion-traefik', namespace='router')
+        self.chart = HelmChart(request=self.req, data=[{
             'apiVersion': 'apiextensions.k8s.io/v1beta1',
             'kind': 'CustomResourceDefinition',
             'metadata': {'name': 'ingressroutes.traefik.containo.us'},
@@ -96,76 +97,10 @@ class TestInfo(unittest.TestCase):
         }])
 
     def test_chart_addnamespace(self):
-        chart = self.chart.process(DefaultProcessor(add_namespace='testns'))
+        chart = self.chart.process(DefaultProcessor(add_namespace=True))
         for d in chart.data:
             if d['kind'] in ['CustomResourceDefinition']:
                 self.assertFalse('namespace' in d['metadata'])
             else:
                 self.assertTrue('namespace' in d['metadata'])
-                self.assertEqual(d['metadata']['namespace'], 'testns')
-
-    def test_chart_filternamespaced(self):
-        chart = self.chart.process(DefaultProcessor(namespaced_filter=BoolFilter.IF_TRUE))
-        self.assertEqual(len(chart.data), 0)
-
-    def test_chart_filternamespaced_after_add(self):
-        chart = self.chart.process(DefaultProcessor(add_namespace='testns', namespaced_filter=BoolFilter.IF_TRUE))
-        self.assertEqual(len(chart.data), 3)
-        for d in chart.data:
-            self.assertNotIn(d['kind'], ['CustomResourceDefinition'])
-
-    def test_chart_filterhook(self):
-        chart = self.chart.process(DefaultProcessor(hook_filter=BoolFilter.IF_TRUE))
-        self.assertEqual(len(chart.data), 1)
-        for d in chart.data:
-            self.assertIn(d['kind'], ['IngressRoute'])
-
-    def test_chart_filterhook_list(self):
-        chart = self.chart.process(DefaultProcessor(hook_filter=BoolFilter.IF_TRUE,
-                                                    hook_filter_list=['pre-rollback']))
-        self.assertEqual(len(chart.data), 0)
-
-        chart = self.chart.process(DefaultProcessor(hook_filter=BoolFilter.IF_TRUE,
-                                                    hook_filter_list=['post-upgrade']))
-        self.assertEqual(len(chart.data), 1)
-
-        chart = self.chart.process(DefaultProcessor(hook_filter=BoolFilter.IF_TRUE,
-                                                    hook_filter_list=['post-upgrade', 'pre-rollback']))
-        self.assertEqual(len(chart.data), 0)
-
-        chart = self.chart.process(DefaultProcessor(hook_filter=BoolFilter.IF_TRUE,
-                                                    hook_filter_list=['post-install', 'post-upgrade']))
-        self.assertEqual(len(chart.data), 1)
-
-    def test_chart_jsonpatch(self):
-        chart = self.chart.process(DefaultProcessor(jsonpatches=[
-            {
-                'conditions': [[
-                    {'op': 'check', 'path': '/kind', 'cmp': 'equals', 'value': 'Service'}
-                ]],
-                'patch': [
-                    # Traefik Helm chart generates a null annotation field, must initialize it to a dict before merging.
-                    {'op': 'mutate', 'path': '/metadata', 'mut': 'custom', 'mutator': InitItemMutator('annotations'),  'value': lambda: {}},
-                    {
-                        'op': 'merge', 'path': '/metadata', 'value': {
-                            'annotations': {
-                                'helmion.github.io/processed-by': 'helmion',
-                            }
-                        },
-                    }
-                ],
-            }
-        ]))
-        for d in chart.data:
-            if d['kind'] in ['Service']:
-                self.assertIsNotNone(d['metadata']['annotations'])
-                self.assertEqual(d['metadata']['annotations']['helmion.github.io/processed-by'], 'helmion')
-            elif d['kind'] in ['IngressRoute']:
-                self.assertNotIn('helmion.github.io/processed-by', d['metadata']['annotations'])
-            else:
-                self.assertTrue('annotations' not in d['metadata'] or d['metadata']['annotations'] is None)
-
-    def test_chart_filterfunc(self):
-        chart = self.chart.process(DefaultProcessor(filterfunc=lambda x: x['kind'] in ['Service', 'IngressRoute']))
-        for d in chart.data:
-            self.assertTrue(d['kind'] in ['Service', 'IngressRoute'])
+                self.assertEqual(d['metadata']['namespace'], self.req.namespace)

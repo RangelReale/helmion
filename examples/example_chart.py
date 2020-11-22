@@ -2,12 +2,13 @@ import pprint
 
 from jsonpatchext.mutators import InitItemMutator  # type: ignore
 
-from helmion.chart import Request, Splitter, ProcessorChain
+from helmion.chart import ProcessorChain
 from helmion.config import BoolFilter
+from helmion.helmchart import HelmRequest
 from helmion.processor import DefaultProcessor, FilterRemoveHelmData, FilterCRDs, DefaultSplitter, ProcessorSplitter
 
-req = Request(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
-              releasename='helmion-traefik', namespace='router', values={
+req = HelmRequest(repository='https://helm.traefik.io/traefik', chart='traefik', version='9.10.1',
+            releasename='helmion-traefik', namespace='router', values={
         'service': {
             'type': 'ClusterIP',
         }
@@ -36,7 +37,7 @@ reqfilter = DefaultProcessor(add_namespace=True, namespaced_filter=BoolFilter.AL
     }
 ])
 
-res = req.generate(ProcessorChain(
+res = req.generate().process(ProcessorChain(
     reqfilter,
     FilterRemoveHelmData(only_exlcusive=False, remove_hooks=False)
 ))
