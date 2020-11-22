@@ -1,11 +1,37 @@
-import pathlib
-from typing import Tuple, Optional
+from typing import Tuple, Mapping, Any, Sequence
 from urllib.parse import urlparse
 
-import yaml
-from yaml.reader import Reader
+from .exception import ParamError, ConfigurationError
 
-from helmion.exception import ParamError
+
+def dict_has_name(dict: Mapping, name: str) -> bool:
+    """Checks if the dict has a name using a dotted accessor-string
+
+    :param dict: source dictionary
+    :param name: dotted value name
+    """
+    current_data = dict
+    for chunk in name.split('.'):
+        if chunk not in current_data:
+            return False
+        current_data = current_data.get(chunk, {})
+    return True
+
+
+def dict_get_value(dict: Mapping, name: str) -> Any:
+    """Gets data from a dictionary using a dotted accessor-string
+
+    :param dict: source dictionary
+    :param name: dotted value name
+    """
+    current_data = dict
+    for chunk in name.split('.'):
+        if not isinstance(current_data, (Mapping, Sequence)):
+            raise ConfigurationError('Could not find item "{}"'.format(name))
+        if chunk not in current_data:
+            raise ConfigurationError('Could not find item "{}"'.format(name))
+        current_data = current_data.get(chunk, {})
+    return current_data
 
 
 def remove_prefix(text, prefix):
@@ -52,8 +78,6 @@ def yaml_strip_invalid(s: str) -> str:
     invalid_chars = ['\u0080', '\u0099']
     invalid_table = str.maketrans({k: '_' for k in invalid_chars})
     return s.translate(invalid_table)
-
-
 
 
 helm_hook_anno = 'helm.sh/hook'
