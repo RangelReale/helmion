@@ -2,7 +2,8 @@ from typing import Any, Optional, Sequence, TypedDict, Callable, Mapping, List, 
 
 from jsonpatchext import JsonPatchExt  # type: ignore
 
-from .chart import Processor, Splitter, SplitterCategoryFuncResult
+from .chart import Processor, Splitter, SplitterCategoryFuncResult, SplitterCategoryResultWrap, Chart, \
+    SplitterCategoryResult
 from .helmchart import HelmRequest, HelmChart
 from .config import BoolFilter
 from .data import ChartData
@@ -134,89 +135,6 @@ class DefaultProcessor(Processor):
                         JsonPatchExt(patch).apply(data, in_place=True)
 
 
-class DefaultSplitter(Splitter):
-    """
-    Default chart splitter configuration.
-
-    This splits chart objects in different categories using a functions.
-
-    :param categoryfunc: a function to choose categories for the chart objects. See
-        :data:`SplitterCategoryFuncResult` for details.
-    """
-    _categoryfunc: Callable[[Any], SplitterCategoryFuncResult]
-
-    def __init__(self, categoryfunc: Callable[[Any], SplitterCategoryFuncResult]):
-        self._categoryfunc = categoryfunc  # type: ignore
-
-    def category(self, chart: HelmRequest, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
-        return self._categoryfunc(data)  # type: ignore
-
-
-class ListSplitter(Splitter):
-    """
-    Chart splitter using a list of callables
-
-    :param categories: a ```Mapping``` of category names and callables.
-        The callable receive these parameters:
-
-        - category name
-        - chart request :class:`Request`
-        - chart data :class:`ChartData`
-    :param require_all: require that all chart data are returned in at least one category
-    :param exactly_one_category: require all that to be returned to exactly one category
-    """
-    categories: Mapping[str, Callable[[str, HelmRequest, ChartData], bool]]
-    require_all: bool
-    exactly_one_category: bool
-
-    def __init__(self, categories: Mapping[str, Callable[[str, HelmRequest, ChartData], bool]], require_all: bool = True,
-                 exactly_one_category: bool = True):
-        self.categories = categories
-        self.require_all = require_all
-        self.exactly_one_category = exactly_one_category
-
-    def category(self, chart: HelmRequest, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
-        ret: List[str] = []
-        for cname, cvalue in self.categories.items():
-            if cvalue(cname, chart, data):
-                ret.append(cname)
-        if len(ret) == 0 and self.require_all:
-            raise ParamError('All data area required to have categories, but "{}" have none'.format(repr(data)))
-        if self.exactly_one_category and len(ret) != 1:
-            raise ParamError('All data area must have exactly one category, but "{}" have {}'.format(repr(data), len(ret)))
-        return ret
-
-
-class ProcessorSplitter(Splitter):
-    """
-    Chart splitter using a processor "filter" method.
-
-    :param processors: a ```Mapping``` of category names and processors.
-    :param require_all: require that all chart data are returned in at least one category
-    :param exactly_one_category: require all that to be returned to exactly one category
-    """
-    processors: Mapping[str, Processor]
-    require_all: bool
-    exactly_one_category: bool
-
-    def __init__(self, processors: Mapping[str, Processor], require_all: bool = True,
-                 exactly_one_category: bool = True):
-        self.processors = processors
-        self.require_all = require_all
-        self.exactly_one_category = exactly_one_category
-
-    def category(self, chart: HelmRequest, categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
-        ret: List[str] = []
-        for cname, cvalue  in self.processors.items():
-            if cvalue.filter(chart, data):
-                ret.append(cname)
-        if len(ret) == 0 and self.require_all:
-            raise ParamError('All data area required to have categories, but "{}" have none'.format(repr(data)))
-        if self.exactly_one_category and len(ret) != 1:
-            raise ParamError('All data area must have exactly one category, but "{}" have {}'.format(repr(data), len(ret)))
-        return ret
-
-
 class FilterCRDs(Processor):
     """
     Filter charts that are CRDs (```apiVersion: apiextensions.k8s.io/CustomResourceDefinition```).
@@ -304,3 +222,111 @@ class FilterRemoveHelmData(Processor):
                             del root['annotations'][lname]
                 if root['annotations'] is None or len(root['annotations']) == 0:
                     del root['annotations']
+
+
+class DefaultSplitter(Splitter):
+    """
+    Default chart splitter configuration.
+
+    This splits chart objects in different categories using a functions.
+
+    :param categoryfunc: a function to choose categories for the chart objects. See
+        :data:`SplitterCategoryFuncResult` for details.
+    """
+    _categoryfunc: Callable[[Chart, ChartData], SplitterCategoryFuncResult]
+    _categories: Optional[Sequence[str]]
+    _default_categories: Optional[Sequence[str]]
+
+    def __init__(self, categoryfunc: Callable[[Chart, ChartData], SplitterCategoryFuncResult],
+                 categories: Optional[Sequence[str]] = None, default_categories: Optional[Sequence[str]] = None):
+        self._categoryfunc = categoryfunc  # type: ignore
+        self._categories = categories
+        self._default_categories = default_categories
+
+    def category(self, chart: Chart, data: ChartData) -> SplitterCategoryFuncResult:
+        ret = self._categoryfunc(chart, data)  # type: ignore
+        if ret == SplitterCategoryResult.NONE and self._default_categories is not None:
+            return SplitterCategoryResult.categories(self._default_categories)
+        return ret
+
+    def category_list(self) -> Optional[Sequence[str]]:
+        return self._categories
+
+
+class ListSplitter(Splitter):
+    """
+    Chart splitter using a list of callables
+
+    :param categories: a ```Mapping``` of category names and callables.
+        The callable receive these parameters:
+
+        - category name
+        - chart request :class:`Request`
+        - chart data :class:`ChartData`
+    :param require_all: require that all chart data are returned in at least one category
+    :param exactly_one_category: require all that to be returned to exactly one category
+    """
+    categories: Mapping[str, Callable[[str, Chart, ChartData], bool]]
+    require_all: bool
+    exactly_one_category: bool
+    default_categories: Optional[Sequence[str]]
+
+    def __init__(self, categories: Mapping[str, Callable[[str, Chart, ChartData], bool]], require_all: bool = False,
+                 exactly_one_category: bool = False, default_categories: Optional[Sequence[str]] = None):
+        self.categories = categories
+        self.require_all = require_all
+        self.exactly_one_category = exactly_one_category
+        self.default_categories = default_categories
+
+    def category(self, chart: Chart, data: ChartData) -> SplitterCategoryFuncResult:
+        ret: List[str] = []
+        for cname, cvalue in self.categories.items():
+            if cvalue(cname, chart, data):
+                ret.append(cname)
+        if len(ret) == 0 and self.require_all:
+            raise ParamError('All data area required to have categories, but "{}" have none'.format(repr(data)))
+        if self.exactly_one_category and len(ret) != 1:
+            raise ParamError('All data area must have exactly one category, but "{}" have {}'.format(repr(data), len(ret)))
+        if len(ret) == 0 and self.default_categories is not None:
+            return SplitterCategoryResult.categories(self.default_categories)
+        return SplitterCategoryResultWrap(ret)
+
+    def category_list(self) -> Optional[Sequence[str]]:
+        return list(self.categories.keys())
+
+
+class ProcessorSplitter(Splitter):
+    """
+    Chart splitter using a processor "filter" method.
+
+    :param processors: a ```Mapping``` of category names and processors.
+    :param require_all: require that all chart data are returned in at least one category
+    :param exactly_one_category: require all that to be returned to exactly one category
+    """
+    processors: Mapping[str, Processor]
+    require_all: bool
+    exactly_one_category: bool
+    default_categories: Optional[Sequence[str]]
+
+    def __init__(self, processors: Mapping[str, Processor], require_all: bool = False,
+                 exactly_one_category: bool = False, default_categories: Optional[Sequence[str]] = None):
+        self.processors = processors
+        self.require_all = require_all
+        self.exactly_one_category = exactly_one_category
+        self.default_categories = default_categories
+
+    def category(self, chart: Chart, data: ChartData) -> SplitterCategoryFuncResult:
+        ret: List[str] = []
+        for cname, cvalue  in self.processors.items():
+            if cvalue.filter(chart, data):
+                ret.append(cname)
+        if len(ret) == 0 and self.require_all:
+            raise ParamError('All data area required to have categories, but "{}" have none'.format(repr(data)))
+        if self.exactly_one_category and len(ret) != 1:
+            raise ParamError('All data area must have exactly one category, but "{}" have {}'.format(repr(data), len(ret)))
+        if len(ret) == 0 and self.default_categories is not None:
+            return SplitterCategoryResult.categories(self.default_categories)
+        return SplitterCategoryResultWrap(ret)
+
+    def category_list(self) -> Optional[Sequence[str]]:
+        return list(self.processors.keys())

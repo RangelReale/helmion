@@ -1,9 +1,10 @@
 import copy
-from typing import Optional, Mapping, List, Sequence, Union, Dict
+from enum import Enum
+from typing import Optional, Mapping, List, Sequence, Union, Dict, Any
 
 from .config import Config
 from .data import ChartData
-from .exception import ConfigurationError
+from .exception import ConfigurationError, ParamError
 from .resource import is_list_resource
 
 
@@ -85,17 +86,54 @@ class ProcessorChain(Processor):
         return lastdata
 
 
-SplitterCategoryFuncResult = Optional[Union[bool, str, Sequence[str]]]
+class SplitterCategoryResult(Enum):
+    """
+    The :class:`Splitter` categorization result.
+    """
+    NONE = 0
+    """don't include in any category"""
+
+    ALL = 1
+    """include in all categories"""
+
+    SKIP = 2
+    """skip to next in chain. If last in chain, then the same as :data:`NONE`"""
+
+    CATEGORIES = 3
+    """include in the selected categories. Use :func:`categories` to specify the categories"""
+
+    @staticmethod
+    def categories(data: Union[str, Sequence[str]]) -> 'SplitterCategoryResultWrap':
+        """
+        Returns a splitter category result with category data.
+
+        :param data: one string or a list of strings naming categories
+        :return: a wrapper for the categories
+        """
+        return SplitterCategoryResultWrap(data=data, tp=SplitterCategoryResult.CATEGORIES)
+
+    @staticmethod
+    def type_of(result: 'SplitterCategoryFuncResult') -> 'SplitterCategoryResult':
+        """
+        Returns the type of the default.
+        """
+        if isinstance(result, SplitterCategoryResultWrap):
+            return result.tp
+        return result
+
+
+class SplitterCategoryResultWrap:
+    """
+    Wrapper for a splitter category result with category data.
+    """
+    def __init__(self, data: Any, tp: SplitterCategoryResult = SplitterCategoryResult.CATEGORIES):
+        self.data = data
+        self.tp = tp
+
+
+SplitterCategoryFuncResult = Union[SplitterCategoryResult, SplitterCategoryResultWrap]
 """
-The :class:`Splitter` categorization function.
-
-The possible return types are:
-
-- ```bool```: True includes the object in ALL categories, False in none
-- ```str```: includes the object only in this category
-- ```Sequence[str]```: includes the object in the list of categories
-- ```None```: inconclusive. If using :class:`SplitterChain`, skip to next splitter, otherwise means
-    the same as False
+The :class:`Splitter` categorization function result.
 """
 
 
@@ -108,16 +146,23 @@ class Splitter:
     It is possible for a chart object to appear in more than one category, depending on the
     splitter configuration.
     """
-    def category(self, chart: 'Chart', categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, chart: 'Chart', data: ChartData) -> SplitterCategoryFuncResult:
         """
         Returns the categories that the chart object should be added to.
 
         :param chart: original chart
-        :param categories: available categories
         :param data: chart data
         :return: splitter category result. See  :data:`SplitterCategoryFuncResult` for details.
         """
-        return True
+        return SplitterCategoryResult.ALL
+
+    def category_list(self) -> Optional[Sequence[str]]:
+        """
+        Returns a list of categories that must exist.
+
+        :return: list of categories
+        """
+        return None
 
 
 class SplitterChain(Splitter):
@@ -131,7 +176,7 @@ class SplitterChain(Splitter):
     def __init__(self, *splitters: Splitter):
         self.splitters = splitters
 
-    def category(self, chart: 'Chart', categories: Sequence[str], data: ChartData) -> SplitterCategoryFuncResult:
+    def category(self, chart: 'Chart', data: ChartData) -> SplitterCategoryFuncResult:
         """
         Returns the categories that the chart object should be added to.
 
@@ -139,10 +184,10 @@ class SplitterChain(Splitter):
         non-None will be the returned value.
         """
         for s in self.splitters:
-            sr = s.category(chart, categories, data)
+            sr = s.category(chart, data)
             if sr is not None:
                 return sr
-        return None
+        return SplitterCategoryResult.SKIP
 
 
 class Chart:
@@ -225,37 +270,53 @@ class Chart:
 
         return ret
 
-    def split(self, categories: List[str], splitter: Splitter) -> Mapping[str, 'Chart']:
+    def split(self, splitter: Splitter, ensure_categories: Optional[Sequence[str]] = None) -> Mapping[str, 'Chart']:
         """
         Splits the chart objects in a list of categories.
 
         Returns new :class:`Chart` instances, the source :class:`Chart` remains unchanged.
 
-        :param categories: list of categories to split.
         :param splitter: the splitter to use to categorize the objects.
+        :param ensure_categories: ensure these categories are creted, even if empty.
         :return: a ```Mapping``` of categories and their charts
         :raises ConfigurationError: on a category that not exists
         """
         ret: Dict[str, 'Chart'] = {}
 
-        for cname in categories:
-            ret[cname] = self.clone(clone_data=False)
+        if ensure_categories is not None:
+            for cname in ensure_categories:
+                ret[cname] = self.clone(clone_data=False)
+
+        if splitter.category_list() is not None:
+            for cname in splitter.category_list():
+                if cname not in ret:
+                    ret[cname] = self.clone(clone_data=False)
+
+        add_to_all = []
 
         for d in self.data:
-            category = splitter.category(self, categories, d)
+            category = splitter.category(self, d)
             categorylist: Optional[Sequence[str]] = None
-            if category is True:
-                categorylist = list(categories)
-            elif isinstance(category, str):
-                categorylist = [category]
-            elif isinstance(category, Sequence):
-                categorylist = category
+            if SplitterCategoryResult.type_of(category) == SplitterCategoryResult.ALL:
+                add_to_all.append(d)
+            elif SplitterCategoryResult.type_of(category) == SplitterCategoryResult.CATEGORIES:
+                if isinstance(category, SplitterCategoryResultWrap):
+                    if isinstance(category.data, str):
+                        categorylist = [category.data]
+                    elif isinstance(category.data, Sequence):
+                        categorylist = category.data
+                else:
+                    raise ParamError('Splitter result type for CATEGORIES should be an instance of SplitterCategoryResult')
 
             if categorylist is not None:
                 for cname in categorylist:
-                    if cname not in categories:
-                        raise ConfigurationError('Unknown category: {}'.format(cname))
+                    if cname not in ret:
+                        ret[cname] = self.clone(clone_data=False)
                     ret[cname].data.append(copy.deepcopy(d))
+
+        for rname in ret.keys():
+            for dall in add_to_all:
+                ret[rname].data.append(copy.deepcopy(dall))
 
         return ret
 

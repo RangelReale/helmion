@@ -2,10 +2,10 @@ import unittest
 
 from jsonpatchext.mutators import InitItemMutator  # type: ignore
 
-from helmion.chart import Chart
+from helmion.chart import Chart, SplitterCategoryResultWrap, SplitterCategoryResult
 from helmion.helmchart import HelmRequest, HelmChart
 from helmion.config import BoolFilter
-from helmion.processor import DefaultProcessor
+from helmion.processor import DefaultProcessor, DefaultSplitter, ListSplitter, ProcessorSplitter, FilterCRDs
 
 
 class TestInfo(unittest.TestCase):
@@ -169,3 +169,36 @@ class TestInfo(unittest.TestCase):
         chart = self.chart.process(DefaultProcessor(filterfunc=lambda x: x['kind'] in ['Service', 'IngressRoute']))
         for d in chart.data:
             self.assertTrue(d['kind'] in ['Service', 'IngressRoute'])
+
+    def test_chart_split(self):
+        def split_func(chart, data):
+            return SplitterCategoryResult.categories(data['kind'])
+        schart = self.chart.split(DefaultSplitter(split_func), ensure_categories=['bar'])
+        self.assertEqual(set(schart.keys()), {'CustomResourceDefinition', 'ServiceAccount', 'Service', 'IngressRoute', 'bar'})
+
+    def test_chart_split_default(self):
+        def split_func(chart, data):
+            if data['kind'] == 'CustomResourceDefinition':
+                return SplitterCategoryResult.NONE
+            return SplitterCategoryResult.categories(data['kind'])
+        schart = self.chart.split(DefaultSplitter(split_func, default_categories=['crd']))
+        self.assertEqual(list(schart.keys()), ['crd', 'ServiceAccount', 'Service', 'IngressRoute'])
+        self.assertEqual(schart['crd'].data[0]['kind'], 'CustomResourceDefinition')
+
+    def test_chart_split_list(self):
+        def split_func(category, chart, data):
+            if category == 'crd':
+                return data['kind'] == 'CustomResourceDefinition'
+            else:
+                return data['kind'] != 'CustomResourceDefinition'
+        schart = self.chart.split(ListSplitter({'crd': split_func, 'other': split_func}, exactly_one_category=False,
+                                               require_all=False))
+        self.assertEqual(set(schart.keys()), {'crd', 'other'})
+        self.assertEqual(len(schart['crd'].data), 1)
+        self.assertEqual(len(schart['other'].data), 3)
+
+    def test_chart_split_processor(self):
+        schart = self.chart.split(ProcessorSplitter({'crd': FilterCRDs(), 'other': FilterCRDs(invert_filter=True)}))
+        self.assertEqual(set(schart.keys()), {'crd', 'other'})
+        self.assertEqual(len(schart['crd'].data), 1)
+        self.assertEqual(len(schart['other'].data), 3)
