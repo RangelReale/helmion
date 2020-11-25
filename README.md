@@ -17,7 +17,7 @@ import pprint
 
 from jsonpatchext.mutators import InitItemMutator  # type: ignore
 
-from helmion.chart import ProcessorChain
+from helmion.chart import ProcessorChain, SplitterCategoryResult
 from helmion.config import BoolFilter
 from helmion.helmchart import HelmRequest
 from helmion.processor import DefaultProcessor, FilterRemoveHelmData, FilterCRDs, DefaultSplitter, ProcessorSplitter
@@ -71,7 +71,7 @@ reqsplitter = ProcessorSplitter(processors={
     'default': FilterCRDs(invert_filter=True),
 })
 
-mres = res.split(list(reqsplitter.processors.keys()), reqsplitter)
+mres = res.split(reqsplitter)
 
 for category, category_chart in mres.items():
     print('')
@@ -86,9 +86,9 @@ print('')
 print('Split Deployment and ServiceAccount charts')
 print('==========================================')
 
-reqsplitter2 = DefaultSplitter(categoryfunc=lambda x: 'deployment' if x['kind'] == 'Deployment' else 'serviceaccount' if x['kind'] == 'ServiceAccount' else False)
+reqsplitter2 = DefaultSplitter(categoryfunc=lambda c, d: SplitterCategoryResult.categories('deployment') if d['kind'] == 'Deployment' else SplitterCategoryResult.categories('serviceaccount') if d['kind'] == 'ServiceAccount' else SplitterCategoryResult.NONE)
 
-mres = res.split(['deployment', 'serviceaccount'], reqsplitter2)
+mres = res.split(reqsplitter2, ensure_categories=['deployment', 'serviceaccount'])
 
 for category, category_chart in mres.items():
     print('')
@@ -267,11 +267,14 @@ Split Deployment and ServiceAccount charts
 ### Example: info
 
 ```python
+import pprint
+
 from helmion.info import RepositoryInfo
 
 repository_url = 'https://helm.traefik.io/traefik'
 chart_name = 'traefik'
 chart_version = '9.10.1'
+# chart_version = '<=9.9.*'
 
 repoinfo = RepositoryInfo(repository_url)
 
@@ -286,20 +289,34 @@ for ci in repoinfo.entries.values():
         print('\trelease: {}'.format(r.version))
 
 
+repochart = repoinfo.mustChartVersion(chart_name, chart_version)
+
 print('')
 print('Chart.yaml')
 print('==========')
 
-# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getChartFile())
-print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('Chart.yaml'))
+# pprint.pprint(repochart.getChartFile())
+print(repochart.getArchiveFile('Chart.yaml'))
 
 
 print('')
 print('values.yaml')
 print('===========')
 
-# pprint.pprint(repoinfo.chartVersion(chart_name, chart_version).getValuesFile())
-print(repoinfo.mustChartVersion(chart_name, chart_version).getArchiveFile('values.yaml'))
+# pprint.pprint(repochart.getValuesFile())
+print(repochart.getArchiveFile('values.yaml'))
+
+
+print('')
+print('dependencies')
+print('============')
+
+pprint.pprint(repochart.getDependencies())
+
+# for depname, dep in repochart.getDependenciesCharts().items():
+#     print(dep.getArchiveFile('Chart.yaml'))
+#
+# pprint.pprint(repochart.getValuesFileWithDependencies())
 
 
 print('')
@@ -327,6 +344,9 @@ Latest: 9.11.0
 	release: 9.8.3
 	release: 9.8.2
 	release: 9.8.1
+	release: 9.8.0
+	release: 9.7.0
+	release: 9.6.0
 <...more...>
 
 Chart.yaml
@@ -374,6 +394,10 @@ deployment:
   annotations: {}
 <...more...>
 
+dependencies
+============
+{}
+
 Chart file contents
 ===================
 - traefik/Chart.yaml
@@ -384,7 +408,26 @@ Chart file contents
 - traefik/templates/hpa.yaml
 - traefik/templates/ingressclass.yaml
 - traefik/templates/poddisruptionbudget.yaml
-<...more...>
+- traefik/templates/pvc.yaml
+- traefik/templates/rbac/clusterrole.yaml
+- traefik/templates/rbac/clusterrolebinding.yaml
+- traefik/templates/rbac/podsecuritypolicy.yaml
+- traefik/templates/rbac/role.yaml
+- traefik/templates/rbac/rolebinding.yaml
+- traefik/templates/rbac/serviceaccount.yaml
+- traefik/templates/service.yaml
+- traefik/templates/tlsoption.yaml
+- traefik/.helmignore
+- traefik/Guidelines.md
+- traefik/LICENSE
+- traefik/README.md
+- traefik/crds/ingressroute.yaml
+- traefik/crds/ingressroutetcp.yaml
+- traefik/crds/ingressrouteudp.yaml
+- traefik/crds/middlewares.yaml
+- traefik/crds/tlsoptions.yaml
+- traefik/crds/tlsstores.yaml
+- traefik/crds/traefikservices.yaml
 ```
 
 ### Credits
