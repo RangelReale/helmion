@@ -176,7 +176,10 @@ class HelmRequest:
             try:
                 runcmd = subprocess.run(cmd, shell=True, check=True, capture_output=True)
             except subprocess.CalledProcessError as e:
-                raise HelmError("Error executing helm: {}".format(e.stderr.decode('utf-8')), cmd=cmd) from e
+                serr = e.stderr.decode('utf-8')
+                sout = e.stdout.decode('utf-8')
+                raise HelmError("Error executing helm: {}".format(serr), cmd=cmd,
+                                stdout=sout, stderr=serr) from e
             out = runcmd.stdout.decode('UTF-8','ignore')
             data: ChartData = self.config.yaml_load_all(out)
 
