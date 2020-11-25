@@ -1,3 +1,4 @@
+import copy
 import os
 import subprocess
 import tempfile
@@ -72,6 +73,16 @@ class HelmRequest:
         self.values = values
         self._allowedvalues = None
         self._allowedvalueswithdeps = None
+
+    def clone(self):
+        """
+        Clone the current Helm request.
+
+        :return: a clone of the current request
+        """
+        return HelmRequest(chart=self.chart, version=self.version, repository=self.repository, releasename=self.releasename,
+                          namespace=self.namespace, sets=copy.deepcopy(self.sets), values=copy.deepcopy(self.values),
+                          config=self.config)
 
     def allowedValues(self, forcedownload: bool = False) -> Mapping[str, Any]:
         """
