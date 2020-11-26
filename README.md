@@ -3,7 +3,8 @@
 [![PyPI version](https://img.shields.io/pypi/v/helmion.svg)](https://pypi.python.org/pypi/helmion/)
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/helmion.svg)](https://pypi.python.org/pypi/helmion/)
 
-Helmion is a python library to download and customize [Helm](https://helm.sh/) charts.
+Helmion is a python library to download and customize [Helm](https://helm.sh/) charts, and can
+also be used to generate custom charts.
 
 * Website: https://github.com/RangelReale/helmion
 * Repository: https://github.com/RangelReale/helmion.git
