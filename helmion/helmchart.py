@@ -51,7 +51,7 @@ class HelmRequest:
     """
     config: HelmConfig
     chart: str
-    version: str
+    version: Optional[str]
     releasename: str
     repository: Optional[str]
     namespace: Optional[str]
@@ -60,7 +60,7 @@ class HelmRequest:
     _allowedvalues: Optional[Mapping[str, Any]]
     _allowedvalueswithdeps: Optional[Mapping[str, Any]]
 
-    def __init__(self, chart: str, version: str, repository: Optional[str] = None, releasename: Optional[str] = None,
+    def __init__(self, chart: str, version: Optional[str] = None, repository: Optional[str] = None, releasename: Optional[str] = None,
                  namespace: Optional[str] = None, sets: Optional[Mapping[str, str]] = None,
                  values: Optional[Mapping[str, Any]] = None, config: Optional[HelmConfig] = None):
         self.config = config if config is not None else HelmConfig()
