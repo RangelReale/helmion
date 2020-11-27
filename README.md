@@ -6,6 +6,9 @@
 Helmion is a python library to download and customize [Helm](https://helm.sh/) charts, and can
 also be used to generate custom charts.
 
+Using [Kubragen2](https://github.com/RangelReale/kubragen2) with Helmion allows creating project deployments 
+easily.
+
 * Website: https://github.com/RangelReale/helmion
 * Repository: https://github.com/RangelReale/helmion.git
 * Documentation: https://helmion.readthedocs.org/
