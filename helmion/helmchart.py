@@ -135,6 +135,15 @@ class HelmRequest:
             raise ParamError('Chart version not found')
         return chartversion.getArchiveFile('values.yaml')
 
+    def build_cmd(self, cmd: str) -> str:
+        """
+        Allows customization of Helm cmd call.
+
+        :param cmd: the built Helm cmd
+        :return: the Helm cmd to execute, by default the unchanged cmd paramater
+        """
+        return cmd
+
     def download_bytes(self) -> bytes:
         """
         Call Helm and returns the raw chart templates as raw bytes.
@@ -172,6 +181,7 @@ class HelmRequest:
                     vfn_dst.write(self.config.yaml_dump(self.values))
                 cmd += ' --values {}'.format(values_file)
 
+            cmd = self.build_cmd(cmd)
             try:
                 runcmd = subprocess.run(cmd, shell=True, check=True, capture_output=True)
             except subprocess.CalledProcessError as e:
