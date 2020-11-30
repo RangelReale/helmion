@@ -135,11 +135,10 @@ class HelmRequest:
             raise ParamError('Chart version not found')
         return chartversion.getArchiveFile('values.yaml')
 
-    def generate(self) -> 'Chart':
+    def download_bytes(self) -> bytes:
         """
-        Call Helm and generate the chart object templates.
+        Call Helm and returns the raw chart templates as raw bytes.
 
-        :param processor: processor to apply to returned object templates.
         :return: a :class:`Chart` instance containing the chart generated templates.
         :raises HelmError: on helm command errors
         :raises InputOutputError: on IO error
@@ -180,18 +179,37 @@ class HelmRequest:
                 sout = e.stdout.decode('utf-8')
                 raise HelmError("Error executing helm: {}".format(serr), cmd=cmd,
                                 stdout=sout, stderr=serr) from e
-            out = runcmd.stdout.decode('UTF-8','ignore')
-            data: ChartData = self.config.yaml_load_all(out)
+            return runcmd.stdout
 
-            ret = HelmChart(request=self, config=self.config)
-            for d in data:
-                if d is None:
-                    continue
-                if not isinstance(d, Mapping):
-                    raise HelmError('Unknown data type in Helm template output: "{}"', repr(d))
-                ret.data.append(d)
+    def download(self) -> str:
+        """
+        Call Helm and returns the raw chart templates as string.
 
-            return ret
+        :return: a :class:`Chart` instance containing the chart generated templates.
+        :raises HelmError: on helm command errors
+        :raises InputOutputError: on IO error
+        """
+        return self.download_bytes().decode('UTF-8', 'ignore')
+
+    def generate(self) -> 'Chart':
+        """
+        Call Helm and generate the chart object templates.
+
+        :return: a :class:`Chart` instance containing the chart generated templates.
+        :raises HelmError: on helm command errors
+        :raises InputOutputError: on IO error
+        """
+        data: ChartData = self.config.yaml_load_all(self.download())
+
+        ret = HelmChart(request=self, config=self.config)
+        for d in data:
+            if d is None:
+                continue
+            if not isinstance(d, Mapping):
+                raise HelmError('Unknown data type in Helm template output: "{}"', repr(d))
+            ret.data.append(d)
+
+        return ret
 
 
 class HelmChart(Chart):
