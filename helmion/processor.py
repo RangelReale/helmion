@@ -4,12 +4,12 @@ from jsonpatchext import JsonPatchExt  # type: ignore
 
 from .chart import Processor, Splitter, SplitterCategoryFuncResult, SplitterCategoryResultWrap, Chart, \
     SplitterCategoryResult
-from .helmchart import HelmRequest, HelmChart
 from .config import BoolFilter
 from .data import ChartData
 from .exception import ParamError
-from .util import helm_hook_anno, parse_apiversion
+from .helmchart import HelmChart
 from .resource import is_namespaced
+from .util import helm_hook_anno, parse_apiversion
 
 
 class PatchType(TypedDict, total=False):
@@ -69,7 +69,7 @@ class DefaultProcessor(Processor):
         self.jsonpatches = jsonpatches
         self.filterfunc = filterfunc
 
-    def filter(self, chart: HelmRequest, data: ChartData) -> bool:
+    def filter(self, chart: Chart, data: ChartData) -> bool:
         if self.namespaced_filter != BoolFilter.ALL:
             is_ns = 'metadata' in data and 'namespace' in data['metadata']
             if is_ns != (self.namespaced_filter == BoolFilter.IF_TRUE):
@@ -92,7 +92,7 @@ class DefaultProcessor(Processor):
 
         return True
 
-    def mutateBefore(self, chart: HelmRequest, data: ChartData) -> None:
+    def mutateBefore(self, chart: Chart, data: ChartData) -> None:
         # Add namespace
         if self.add_namespace is not False:
             apiVersion = data['apiVersion']
@@ -108,7 +108,7 @@ class DefaultProcessor(Processor):
                         namespace = chart.request.namespace
                     data['metadata']['namespace'] = namespace
 
-    def mutate(self, chart: HelmRequest, data: ChartData) -> None:
+    def mutate(self, chart: Chart, data: ChartData) -> None:
         def do_check(check):
             if callable(check):
                 return check(data)
@@ -147,7 +147,7 @@ class FilterCRDs(Processor):
         super().__init__()
         self.invert_filter = invert_filter
 
-    def filter(self, chart: HelmRequest, data: ChartData) -> bool:
+    def filter(self, chart: Chart, data: ChartData) -> bool:
         value = parse_apiversion(data['apiVersion'])[0] == 'apiextensions.k8s.io' and data['kind'] == 'CustomResourceDefinition'
         return value != self.invert_filter
 
@@ -171,7 +171,7 @@ class FilterRemoveHelmData(Processor):
         self.remove_hooks = remove_hooks
         self.remove_managedby = remove_managedby
 
-    def mutate(self, chart: HelmRequest, data: ChartData) -> None:
+    def mutate(self, chart: Chart, data: ChartData) -> None:
         """
         Removes Helm data.
 

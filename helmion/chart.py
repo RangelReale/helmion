@@ -199,7 +199,7 @@ class Chart:
     """
     config: Config
     data: List[ChartData]
-    """List of objected generated from the Helm chart"""
+    """List of objected generated from the chart"""
 
     def __init__(self, config: Optional[Config] = None, data: Optional[Sequence[ChartData]] = None):
         self.config = config if config is not None else Config()
